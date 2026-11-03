@@ -58,7 +58,7 @@ pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 
 ```sh
 pnpm test:unit       # 51 TypeScript unit tests (seconds)
-pnpm test:sandbox    # 16 tests against a local NEAR node with real receipts (~1 min)
+pnpm test:sandbox    # 21 tests against a local NEAR node with real receipts, incl. the deploy script (~1.5 min)
 pnpm test            # both
 pnpm test:contracts  # 21 Rust unit tests (needs Rust)
 pnpm test:e2e        # optional browser test of the button + checkout (needs Playwright; run pnpm dev first)
@@ -116,6 +116,10 @@ Our servers can delay things and the settler can wrongly mark an invoice paid, b
 - **Relayer:** pays gas for an allowlist of calls; it cannot change what users signed.
 - **Keys in the browser:** a lost browser means a lost account until the user backs up the key; the web app must prompt for that.
 - **Checkout:** Cascade never receives checkout money (1Click's recipient is the merchant). Secret keys are stored hashed; webhooks are HMAC-signed with a timestamp; session ids are unguessable capabilities for the public page.
+
+## Deploying (testnet, then mainnet)
+
+`pnpm deploy:cascade` and `pnpm spike <name>` run from your machine with keys in `.env`; every transaction is shown and needs a typed `yes`. The app contract is deployed **locked** (no access keys), so nobody can change it or move its funds. Step by step: [docs/mainnet-runbook.md](docs/mainnet-runbook.md). The deploy script itself is tested against a local node (`contracts/tests/deploy.test.ts`).
 
 ## Running the services
 

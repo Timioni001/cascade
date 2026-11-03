@@ -64,5 +64,5 @@ A private line asks 1Click for `confidentiality: "basic"` (needs our partner JWT
 ## Known gaps (to fix before mainnet use)
 
 - Contract storage for invoices and batches is paid by the contract; bounded by the relayer limits and `MAX_LINES`, not by a per-owner deposit.
-- No upgrade or pause on the app contract yet. Changing it means redeploying.
+- The app contract is deployed locked (no access keys; `deployments/<network>.json` records `appLocked: true`). Nobody can upgrade or pause it; a new version means a new app account. The factory lives on the root account, which keeps a key: it holds only NEAR for creating names, never user funds.
 - The in-memory rate limiter is per process.

@@ -32,6 +32,8 @@ export interface IncomingQuoteParams {
   now?: number;
   slippageBps?: number;
   referral?: string;
+  /** Override the payer's window (default 1 hour). */
+  deadlineMs?: number;
 }
 
 export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
@@ -48,7 +50,7 @@ export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
     refundType: "ORIGIN_CHAIN",
     recipient: p.owner,
     recipientType: "DESTINATION_CHAIN",
-    deadline: new Date((p.now ?? Date.now()) + INCOMING_DEADLINE_MS).toISOString(),
+    deadline: new Date((p.now ?? Date.now()) + (p.deadlineMs ?? INCOMING_DEADLINE_MS)).toISOString(),
     ...(p.referral ? { referral: p.referral } : {}),
   };
 }

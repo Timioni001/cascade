@@ -33,6 +33,9 @@ Live checks (free dry quotes, no money):
 | Dry `EXACT_OUTPUT` quote, ETH on Base -> 5 USDC on NEAR, no JWT | 200. 0.00222 ETH (~$5.07). No deposit address (as documented). Response adds `appFees: [{fee: 20}]`: the 0.2% unauthenticated fee is real |
 | Dry quote with `confidentiality: "basic"`, no JWT | 401 "User authentication is required for confidential intent quotes" |
 
+| Dry quote USDC on Base -> 1 USDC on NEAR, no JWT (2026-11-03) | 200, pay 1.010309 USDC. The unauthenticated `appFees` entry here was **1 bps**, versus 20 bps on ETH -> USDC: the fee depends on the route |
+| Dry quote to a NEAR recipient that does not exist (2026-11-03) | 400 "Internal server error". The same quote to an existing account works, at $1 and $5. Recipients must exist before quoting |
+
 So private payments need the partner JWT from partners.near-intents.org. `MockOneClick` reproduces all three behaviours.
 
 Asset ids from `GET /v0/tokens` (215 tokens): USDC on NEAR `nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` (6 decimals), ETH on Base `nep141:base.omft.near`, SOL `nep141:sol.omft.near`, USDC on Solana `nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near`, USDC on Base/Arbitrum/Ethereum in `packages/core/src/chains.ts`.

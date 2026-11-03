@@ -1,5 +1,7 @@
 # Mainnet spikes (not run yet: each one needs the human's approval)
 
+Scripts: `pnpm spike <name>` (see [mainnet-runbook.md](mainnet-runbook.md)). Results land in `deployments/<network>-spikes.json`.
+
 NEAR Intents has no testnet, so a few questions can only be answered on mainnet. Each spike uses about $1, separate dev accounts, keys only in `.env`, a dry quote first, and runs only after an explicit "yes" for that transaction.
 
 | # | Question | How | Cost | Status |
