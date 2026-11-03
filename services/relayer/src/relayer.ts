@@ -4,7 +4,7 @@ import {
 } from "@cascade/near";
 import type { Account } from "near-api-js";
 import { checkDelegate, type RelayPolicyConfig } from "./policy.js";
-import { DEFAULT_LIMITS, RateLimiter, type LimitRule } from "./limits.js";
+import { DEFAULT_LIMITS, RateLimiter, type LimitRule } from "@cascade/core";
 
 export interface RelayerDeps {
   chain: Chain;

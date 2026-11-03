@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_ACCOUNT_ID, DEFAULT_PRIVATE_KEY, type Sandbox } from "near-sandbox";
 import { KeyPair, type Account, type KeyPairString } from "near-api-js";
 import { MemoryStore } from "@cascade/db";
-import { Engine, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
+import { Checkout, Engine, checkoutHooks, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
+import { serve } from "@hono/node-server";
+import type { AddressInfo } from "node:net";
+import { apiApp } from "@cascade/api";
 import { Chain, ftCalls, type TxResult } from "@cascade/near";
 import { MockOneClick, type MockDriver } from "@cascade/oneclick";
 import { daoInitArgs, payrollPolicy } from "@cascade/sputnik";
@@ -53,6 +56,9 @@ export interface World {
   relayer: Relayer;
   sink: RelaySink;
   settler: Settler;
+  checkout: Checkout;
+  /** Base URL of the checkout API served from this process, e.g. http://127.0.0.1:41234 */
+  apiUrl: string;
   as: (account: Account) => Executor;
   usdcBalance: (account: string) => Promise<bigint>;
   nearBalance: (account: string) => Promise<bigint>;
@@ -131,7 +137,11 @@ export async function createWorld(opts: { log?: (s: string) => void } = {}): Pro
     limits: { namesPerIp: { max: 100, windowMs: 86_400_000 } },
   });
   const sink: RelaySink = { relay: (b64) => relayer.relay(b64, { ip: "127.0.0.1" }) };
-  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app) });
+  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: "http://localhost:3000" });
+  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout) });
+  const server = serve({ fetch: apiApp({ checkout, dev: { oneclick } }).fetch, port: 0, hostname: "127.0.0.1" });
+  await new Promise<void>((r) => (server.listening ? r() : server.once("listening", () => r())));
+  const apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
   async function signUp(name: string): Promise<Person> {
     const full = KeyPair.fromRandom("ed25519");
@@ -170,7 +180,7 @@ export async function createWorld(opts: { log?: (s: string) => void } = {}): Pro
   }
 
   return {
-    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler,
+    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler, checkout, apiUrl,
     as: direct,
     usdcBalance,
     nearBalance: (a) => chain.nearBalance(a),
@@ -178,7 +188,10 @@ export async function createWorld(opts: { log?: (s: string) => void } = {}): Pro
     freeze: async (a) => {
       expectOk(await chain.send(solver, ftCalls(ids.usdc).setBlocked(a, true)), "freeze");
     },
-    stop: () => sandbox.tearDown(),
+    stop: async () => {
+      await new Promise<void>((r) => server.close(() => r()));
+      await sandbox.tearDown();
+    },
   };
 }
 

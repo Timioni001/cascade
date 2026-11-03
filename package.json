@@ -34,7 +34,10 @@
     "@cascade/oneclick": "workspace:*",
     "@cascade/sputnik": "workspace:*",
     "@cascade/relayer": "workspace:*",
-    "@cascade/settler": "workspace:*"
+    "@cascade/settler": "workspace:*",
+    "@cascade/api": "workspace:*",
+    "@cascade/sdk": "workspace:*",
+    "@hono/node-server": "2.1.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

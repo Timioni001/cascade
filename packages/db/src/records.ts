@@ -21,6 +21,8 @@ export interface PaymentRecord {
   owner: string;
   /** incoming: the invoice being paid, or null for a payment-link receipt */
   invoiceId: number | null;
+  /** incoming: the checkout session this payment is for, if any */
+  sessionId?: string | null;
   /** outgoing: which batch line this quote belongs to */
   batchId: number | null;
   lineIdx: number | null;
@@ -60,6 +62,60 @@ export interface BatchDoc {
   createdAt: string;
 }
 
+export interface Merchant {
+  id: string; // mrc_...
+  account: string; // NEAR owner (person or DAO) that receives the USDC
+  name: string;
+  webhookUrl: string | null;
+  webhookSecret: string; // whsec_...
+  /** NEAR account that proved control when onboarding (the DAO's preparer, or the person) */
+  verifiedBy: string;
+  createdAt: string;
+}
+
+export interface ApiKey {
+  hash: string; // sha256 hex of the full key; the key itself is never stored
+  prefix: string; // first 12 chars, for display
+  merchantId: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export type SessionState = "open" | "processing" | "paid" | "expired";
+
+export interface CheckoutSessionRecord {
+  id: string; // cs_...
+  merchantId: string;
+  owner: string;
+  amount: string;
+  description: string;
+  reference: string | null;
+  metadata: Record<string, string>;
+  successUrl: string | null;
+  cancelUrl: string | null;
+  status: SessionState;
+  /** deposit addresses of every payment attempt, newest last */
+  attempts: string[];
+  receiptId: number | null;
+  nearTx: string | null;
+  idempotencyKey: string | null;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+}
+
+export interface WebhookDelivery {
+  id: string; // evt_...
+  merchantId: string;
+  type: string;
+  body: string; // exact JSON that is signed and sent
+  attempts: number;
+  nextAttemptAt: string;
+  status: "pending" | "delivered" | "failed";
+  lastError: string | null;
+  createdAt: string;
+}
+
 export interface PaymentFilter {
   owner?: string;
   direction?: "in" | "out";
@@ -80,6 +136,23 @@ export interface Store {
   putBatch(doc: BatchDoc): Promise<void>;
   getBatch(id: number): Promise<BatchDoc | null>;
   listBatches(owner?: string): Promise<BatchDoc[]>;
+
+  putMerchant(m: Merchant): Promise<void>;
+  getMerchant(id: string): Promise<Merchant | null>;
+  findMerchantByAccount(account: string): Promise<Merchant | null>;
+  listMerchants(): Promise<Merchant[]>;
+
+  putApiKey(k: ApiKey): Promise<void>;
+  getApiKey(hash: string): Promise<ApiKey | null>;
+
+  putSession(s: CheckoutSessionRecord): Promise<void>;
+  getSession(id: string): Promise<CheckoutSessionRecord | null>;
+  listSessions(merchantId: string, limit?: number): Promise<CheckoutSessionRecord[]>;
+  findSessionByIdempotencyKey(merchantId: string, key: string): Promise<CheckoutSessionRecord | null>;
+
+  putWebhook(w: WebhookDelivery): Promise<void>;
+  listDueWebhooks(nowIso: string): Promise<WebhookDelivery[]>;
+  listWebhooks(merchantId: string): Promise<WebhookDelivery[]>;
 }
 
 const TERMINAL = new Set<ExecutionStatus>(["SUCCESS", "REFUNDED", "FAILED"]);

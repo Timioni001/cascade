@@ -10,6 +10,7 @@
 import { bucketSum, formatUsd } from "@cascade/core";
 import { createWorld } from "./sandbox/world.js";
 import { personalFlow, teamFlow, type Narrator } from "./sandbox/flows.js";
+import { checkoutFlow } from "./sandbox/checkout-flow.js";
 
 const tty = process.stdout.isTTY;
 const c = (code: string) => (s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -49,8 +50,9 @@ let exit = 0;
 try {
   const p = await personalFlow(world, narrator);
   const t = await teamFlow(world, p.ada, narrator);
+  const k = await checkoutFlow(world, narrator);
 
-  console.log(`\n${bold("13. The accountant's CSV (Ada, then the studio)")}`);
+  console.log(`\n${bold("18. The accountant's CSV (Ada, then the studio)")}`);
   for (const csv of [p.csv, t.csv]) {
     for (const row of csv.trim().split("\r\n")) console.log(`  ${dim(row.length > 160 ? row.slice(0, 157) + "..." : row)}`);
     console.log("");
@@ -71,6 +73,11 @@ try {
   check(bucketSum(t.batch.buckets) === BigInt(t.batch.total) && BigInt(t.batch.buckets.sent) + BigInt(t.batch.buckets.refunded) === BigInt(t.batch.total), "Sent + Refunded == batch total");
   check(t.daoUsdcEnd === t.daoUsdcAfterIncome - BigInt(t.batch.buckets.sent), "the DAO paid only what was delivered; the refund is back in its treasury");
   check(t.approverNearBefore.every((b, i) => b === t.approverNearAfter[i]), "approvers voted without paying fees");
+  check(k.session.status === "paid" && k.replayedSessionId === k.session.id, "checkout session paid; a retried create returned the same session");
+  check(k.merchantUsdcDelta === 25_000_000n && !k.cascadeHeldAnything, "the shop received exactly $25.00 directly; Cascade held nothing");
+  check(k.receipt?.source === "Link" && k.receiptHashMatches, "on-chain receipt is bound to the session by hash");
+  check(k.webhook?.type === "checkout.session.completed" && k.webhook.data.session.reference === "order-1001", "merchant verified a signed checkout.session.completed webhook");
+  check(k.webhookRejectedForgery, "a forged webhook was rejected by the merchant's SDK check");
 } catch (e) {
   exit = 1;
   console.error(red(`\nDemo failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`));

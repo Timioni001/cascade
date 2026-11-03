@@ -1,0 +1,477 @@
+/**
+ * Cascade Checkout: Stripe-style sessions on top of NEAR Intents.
+ *
+ * A merchant (any registered Cascade owner: a person or a DAO) creates a
+ * session for an exact USD amount. The customer picks any coin on any chain;
+ * 1Click delivers exactly that much USDC straight to the merchant's NEAR
+ * account or DAO. The settler records an on-chain receipt bound to the
+ * session, and the merchant gets a signed webhook to fulfil the order.
+ *
+ * Cascade never holds checkout money: 1Click's recipient is the merchant.
+ */
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import { verifyMessage } from "near-api-js/nep413";
+import { assetSymbol, formatUsd, hashDocument, isAccountId } from "@cascade/core";
+import type { CheckoutSessionRecord, Merchant, PaymentRecord, Store, WebhookDelivery } from "@cascade/db";
+import { CascadeReader, type Chain } from "@cascade/near";
+import { incomingQuote, type OneClick, type Token } from "@cascade/oneclick";
+import { signWebhook, SIGNATURE_HEADER, type CheckoutSession, type PayAsset, type PaymentPreview, type WebhookEvent, type WebhookEventType } from "@cascade/sdk";
+
+export class CheckoutError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CheckoutError";
+  }
+}
+
+const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+/** Unguessable id: a session id is a capability for the public checkout page. */
+export function randomId(prefix: string, bytes = 18): string {
+  const b = crypto.getRandomValues(new Uint8Array(bytes));
+  return prefix + Array.from(b, (x) => ALPHABET[x % 62]).join("");
+}
+
+export const sha256Hex = (s: string) => bytesToHex(sha256(utf8ToBytes(s)));
+
+/** Placeholder refund addresses for *dry* (preview) quotes only. Real quotes always use the payer's address. */
+const PREVIEW_REFUND: Record<string, string> = {
+  sol: "11111111111111111111111111111111",
+  btc: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+  near: "preview.near",
+  tron: "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+};
+const previewRefund = (chain: string) => PREVIEW_REFUND[chain] ?? "0x000000000000000000000000000000000000dEaD";
+
+export const ONBOARDING_RECIPIENT = "cascade-checkout";
+export const MAX_SESSION_USD = 100_000n * 1_000_000n;
+export const MAX_ATTEMPTS = 5;
+const WEBHOOK_MAX_ATTEMPTS = 8;
+
+/** The exact text a merchant signs (NEP-413) to prove control of `account`. */
+export function onboardingMessage(p: { account: string; name: string; issuedAt: string }): string {
+  return `Cascade Checkout merchant onboarding\naccount: ${p.account}\nname: ${p.name}\nissued: ${p.issuedAt}`;
+}
+
+export interface OnboardingProof {
+  signer: string; // NEAR account that signed (the owner, or a preparer of a DAO owner)
+  publicKey: string; // ed25519:...
+  signature: string; // base64
+  nonce: string; // base64, 32 bytes
+  issuedAt: string; // ISO, must be within 10 minutes
+}
+
+export interface CheckoutConfig {
+  store: Store;
+  oneclick: OneClick;
+  chain: Chain;
+  app: string;
+  /** Base URL of the hosted checkout page, e.g. https://cascade.link */
+  publicUrl: string;
+  keyMode?: "test" | "live";
+  now?: () => number;
+  /** Verify a NEP-413 proof. Defaults to near-api-js verifyMessage against the chain. */
+  verifyProof?: (p: OnboardingProof, message: string) => Promise<boolean>;
+}
+
+export interface NewSession {
+  amount: string; // USDC base units
+  description: string;
+  reference?: string;
+  metadata?: Record<string, string>;
+  successUrl?: string;
+  cancelUrl?: string;
+  expiresInMinutes?: number;
+}
+
+export class Checkout {
+  private readonly reader: CascadeReader;
+  private readonly now: () => number;
+  private readonly usedNonces = new Set<string>();
+  private assetsCache: { at: number; assets: PayAsset[] } | null = null;
+
+  constructor(readonly cfg: CheckoutConfig) {
+    this.reader = new CascadeReader(cfg.chain, cfg.app);
+    this.now = cfg.now ?? Date.now;
+  }
+
+  private iso(ms = this.now()) {
+    return new Date(ms).toISOString();
+  }
+
+  // ------------------------------------------------------------ merchants
+
+  private async verify(p: OnboardingProof, message: string): Promise<boolean> {
+    if (this.cfg.verifyProof) return this.cfg.verifyProof(p, message);
+    try {
+      await verifyMessage({
+        signerAccountId: p.signer,
+        signerPublicKey: p.publicKey,
+        payload: { message, recipient: ONBOARDING_RECIPIENT, nonce: Uint8Array.from(Buffer.from(p.nonce, "base64")) },
+        signature: Uint8Array.from(Buffer.from(p.signature, "base64")),
+        provider: this.cfg.chain.provider,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Onboard `account` (a registered Cascade owner) as a merchant. The proof
+   * must be signed by the account itself, or, for a DAO, by one of the
+   * preparers the DAO approved. Returns the secret key once; only its hash is stored.
+   */
+  async onboard(p: { account: string; name: string; webhookUrl?: string | null; proof: OnboardingProof }): Promise<{ merchant: Merchant; secretKey: string }> {
+    const name = p.name.trim();
+    if (!isAccountId(p.account)) throw new CheckoutError(400, "account is not a NEAR account id");
+    if (name.length < 2 || name.length > 80) throw new CheckoutError(400, "name must be 2-80 characters");
+    if (p.webhookUrl) validateWebhookUrl(p.webhookUrl);
+    const issued = Date.parse(p.proof.issuedAt);
+    if (!Number.isFinite(issued) || Math.abs(this.now() - issued) > 10 * 60_000) throw new CheckoutError(400, "proof is expired or from the future");
+    if (Buffer.from(p.proof.nonce, "base64").length !== 32) throw new CheckoutError(400, "nonce must be 32 bytes");
+    if (this.usedNonces.has(p.proof.nonce)) throw new CheckoutError(400, "proof already used");
+
+    const owner = await this.reader.owner(p.account);
+    if (!owner) throw new CheckoutError(400, `${p.account} is not registered with Cascade`);
+    const allowed = p.proof.signer === p.account || (owner.kind === "Dao" && owner.preparers.includes(p.proof.signer));
+    if (!allowed) throw new CheckoutError(403, `${p.proof.signer} cannot act for ${p.account}`);
+    if (!(await this.verify(p.proof, onboardingMessage({ account: p.account, name, issuedAt: p.proof.issuedAt })))) {
+      throw new CheckoutError(401, "signature does not verify for that account and key");
+    }
+    this.usedNonces.add(p.proof.nonce);
+    if (await this.cfg.store.findMerchantByAccount(p.account)) throw new CheckoutError(409, "this account is already a merchant");
+
+    const merchant: Merchant = {
+      id: randomId("mrc_"),
+      account: p.account,
+      name,
+      webhookUrl: p.webhookUrl ?? null,
+      webhookSecret: randomId("whsec_", 24),
+      verifiedBy: p.proof.signer,
+      createdAt: this.iso(),
+    };
+    await this.cfg.store.putMerchant(merchant);
+    return { merchant, secretKey: await this.issueKey(merchant.id) };
+  }
+
+  async issueKey(merchantId: string): Promise<string> {
+    const key = randomId(`sk_${this.cfg.keyMode ?? "test"}_`, 24);
+    await this.cfg.store.putApiKey({ hash: sha256Hex(key), prefix: key.slice(0, 12), merchantId, createdAt: this.iso(), revokedAt: null });
+    return key;
+  }
+
+  async authenticate(authorization: string | undefined | null): Promise<Merchant> {
+    const key = authorization?.replace(/^Bearer\s+/i, "").trim();
+    if (!key?.startsWith("sk_")) throw new CheckoutError(401, "missing or malformed secret key");
+    const rec = await this.cfg.store.getApiKey(sha256Hex(key));
+    if (!rec || rec.revokedAt) throw new CheckoutError(401, "invalid secret key");
+    const m = await this.cfg.store.getMerchant(rec.merchantId);
+    if (!m) throw new CheckoutError(401, "invalid secret key");
+    return m;
+  }
+
+  async updateMerchant(m: Merchant, p: { name?: string; webhookUrl?: string | null }): Promise<Merchant> {
+    if (p.webhookUrl) validateWebhookUrl(p.webhookUrl);
+    const next = { ...m, ...(p.name ? { name: p.name.trim().slice(0, 80) } : {}), ...(p.webhookUrl !== undefined ? { webhookUrl: p.webhookUrl } : {}) };
+    await this.cfg.store.putMerchant(next);
+    return next;
+  }
+
+  // ------------------------------------------------------------ sessions
+
+  async createSession(m: Merchant, p: NewSession, idempotencyKey?: string): Promise<CheckoutSessionRecord> {
+    if (idempotencyKey) {
+      if (idempotencyKey.length > 200) throw new CheckoutError(400, "idempotency key too long");
+      const prior = await this.cfg.store.findSessionByIdempotencyKey(m.id, idempotencyKey);
+      if (prior) {
+        if (prior.amount !== p.amount || prior.description !== p.description) throw new CheckoutError(409, "idempotency key reused with different parameters");
+        return prior;
+      }
+    }
+    if (!/^\d+$/.test(p.amount) || BigInt(p.amount) <= 0n) throw new CheckoutError(400, "amount must be a positive integer of USDC base units");
+    if (BigInt(p.amount) > MAX_SESSION_USD) throw new CheckoutError(400, "amount above the per-session limit");
+    if (!p.description || p.description.length > 300) throw new CheckoutError(400, "description must be 1-300 characters");
+    if (p.reference && p.reference.length > 200) throw new CheckoutError(400, "reference too long");
+    const meta = p.metadata ?? {};
+    if (Object.keys(meta).length > 20 || Object.entries(meta).some(([k, v]) => k.length > 40 || typeof v !== "string" || v.length > 500)) {
+      throw new CheckoutError(400, "metadata: up to 20 string keys of 40 chars and values of 500 chars");
+    }
+    for (const u of [p.successUrl, p.cancelUrl]) if (u && !/^https?:\/\//.test(u)) throw new CheckoutError(400, "redirect URLs must be http(s)");
+    const minutes = Math.min(Math.max(p.expiresInMinutes ?? 60, 5), 1440);
+    const s: CheckoutSessionRecord = {
+      id: randomId("cs_"),
+      merchantId: m.id,
+      owner: m.account,
+      amount: p.amount,
+      description: p.description,
+      reference: p.reference ?? null,
+      metadata: meta,
+      successUrl: p.successUrl ?? null,
+      cancelUrl: p.cancelUrl ?? null,
+      status: "open",
+      attempts: [],
+      receiptId: null,
+      nearTx: null,
+      idempotencyKey: idempotencyKey ?? null,
+      createdAt: this.iso(),
+      expiresAt: this.iso(this.now() + minutes * 60_000),
+      paidAt: null,
+    };
+    await this.cfg.store.putSession(s);
+    return s;
+  }
+
+  async getSession(id: string): Promise<CheckoutSessionRecord> {
+    const s = /^cs_[A-Za-z0-9]{10,40}$/.test(id) ? await this.cfg.store.getSession(id) : null;
+    if (!s) throw new CheckoutError(404, "no such checkout session");
+    return s;
+  }
+
+  async view(s: CheckoutSessionRecord): Promise<CheckoutSession> {
+    const m = (await this.cfg.store.getMerchant(s.merchantId))!;
+    const last = s.attempts.at(-1);
+    const rec = last ? await this.cfg.store.getPayment(last) : null;
+    const q = rec?.quote.quote;
+    return {
+      id: s.id,
+      object: "checkout.session",
+      merchant: { name: m.name, account: m.account },
+      amount: s.amount,
+      amountFormatted: formatUsd(s.amount),
+      currency: "USD",
+      description: s.description,
+      reference: s.reference,
+      metadata: s.metadata,
+      status: s.status,
+      url: `${this.cfg.publicUrl}/c/${s.id}`,
+      successUrl: s.successUrl,
+      cancelUrl: s.cancelUrl,
+      payment:
+        rec && q
+          ? {
+              depositAddress: rec.depositAddress,
+              depositMemo: q.depositMemo ?? null,
+              asset: rec.quote.quoteRequest.originAsset,
+              chain: rec.originChain,
+              amountIn: q.amountIn,
+              amountInFormatted: q.amountInFormatted,
+              deadline: q.deadline ?? rec.quote.quoteRequest.deadline,
+              status: rec.status,
+            }
+          : null,
+      receipt: s.receiptId !== null ? { id: s.receiptId, nearTx: s.nearTx, contract: this.cfg.app } : null,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      paidAt: s.paidAt,
+    };
+  }
+
+  // ------------------------------------------------------------ paying
+
+  async assets(): Promise<PayAsset[]> {
+    if (this.assetsCache && this.now() - this.assetsCache.at < 60_000) return this.assetsCache.assets;
+    const tokens: Token[] = await this.cfg.oneclick.tokens();
+    const assets = tokens
+      .filter((t) => t.price > 0)
+      .map((t) => ({
+        assetId: t.assetId,
+        chain: t.blockchain,
+        symbol: t.symbol || assetSymbol(t.assetId),
+        decimals: t.decimals,
+        contractAddress: t.contractAddress ?? null,
+        priceUsd: t.price,
+      }));
+    this.assetsCache = { at: this.now(), assets };
+    return assets;
+  }
+
+  private async asset(assetId: string): Promise<PayAsset> {
+    const a = (await this.assets()).find((x) => x.assetId === assetId);
+    if (!a) throw new CheckoutError(400, "unsupported payment asset");
+    return a;
+  }
+
+  private assertPayable(s: CheckoutSessionRecord) {
+    if (s.status === "paid") throw new CheckoutError(409, "this session is already paid");
+    if (s.status === "expired" || Date.parse(s.expiresAt) <= this.now()) throw new CheckoutError(410, "this session has expired");
+  }
+
+  /** Free price preview (dry quote): no deposit address is reserved. */
+  async preview(id: string, assetId: string): Promise<PaymentPreview> {
+    const s = await this.getSession(id);
+    this.assertPayable(s);
+    const a = await this.asset(assetId);
+    const q = await this.cfg.oneclick.quote(
+      incomingQuote({ payAsset: a.assetId, owner: s.owner, amountOut: BigInt(s.amount), refundTo: previewRefund(a.chain), dry: true, now: this.now() }),
+    );
+    return { asset: a, amountIn: q.quote.amountIn, amountInFormatted: q.quote.amountInFormatted, amountInUsd: q.quote.amountInUsd, amountOut: q.quote.amountOut, timeEstimateSeconds: q.quote.timeEstimate };
+  }
+
+  /** The payer confirmed: reserve a one-time deposit address. Refunds (if any) go to `refundTo`, the payer's own address. */
+  async startPayment(id: string, p: { assetId: string; refundTo: string }): Promise<CheckoutSession> {
+    const s = await this.getSession(id);
+    this.assertPayable(s);
+    if (s.attempts.length >= MAX_ATTEMPTS) throw new CheckoutError(429, "too many payment attempts for this session");
+    if (!p.refundTo || p.refundTo.length > 128) throw new CheckoutError(400, "refundTo (your own address on the paying chain) is required");
+    const a = await this.asset(p.assetId);
+    const q = await this.cfg.oneclick.quote(
+      incomingQuote({ payAsset: a.assetId, owner: s.owner, amountOut: BigInt(s.amount), refundTo: p.refundTo, dry: false, now: this.now() }),
+    );
+    const dep = q.quote.depositAddress;
+    if (!dep) throw new CheckoutError(502, "1Click returned no deposit address");
+    const rec: PaymentRecord = {
+      depositAddress: dep, direction: "in", owner: s.owner, invoiceId: null, sessionId: s.id, batchId: null, lineIdx: null,
+      counterparty: s.reference ? `checkout ${s.reference}` : `checkout ${s.id}`, originChain: a.chain, destChain: "near", quote: q,
+      status: "PENDING_DEPOSIT", recorded: false, nearTx: null, destTx: null, amountOut: null, refundReason: null,
+      createdAt: this.iso(), updatedAt: this.iso(),
+    };
+    await this.cfg.store.putPayment(rec);
+    const next = { ...s, attempts: [...s.attempts, dep] };
+    await this.cfg.store.putSession(next);
+    return this.view(next);
+  }
+
+  /** The payer's wallet returned a tx hash: tell 1Click to look for it now. */
+  async submitDeposit(id: string, txHash: string): Promise<CheckoutSession> {
+    const s = await this.getSession(id);
+    const dep = s.attempts.at(-1);
+    if (!dep) throw new CheckoutError(400, "no payment started");
+    if (!/^[0-9a-zA-Z]{20,128}$/.test(txHash.replace(/^0x/, ""))) throw new CheckoutError(400, "bad transaction hash");
+    await this.cfg.oneclick.submitDeposit({ depositAddress: dep, txHash }).catch(() => undefined);
+    return this.view(s);
+  }
+
+  /** Hash bound into the on-chain receipt: proves which session a receipt paid. */
+  static receiptHash(s: Pick<CheckoutSessionRecord, "id" | "merchantId" | "amount" | "reference">): string {
+    return hashDocument({ kind: "checkout", session: s.id, merchant: s.merchantId, amount: s.amount, reference: s.reference });
+  }
+
+  // ------------------------------------------------------------ settler hooks
+
+  /** Settler recorded a session payment on-chain. */
+  async onRecorded(rec: PaymentRecord, receiptId: number | null, nearTx: string): Promise<void> {
+    if (!rec.sessionId) return;
+    const s = await this.cfg.store.getSession(rec.sessionId);
+    if (!s || s.status === "paid") return;
+    const paid: CheckoutSessionRecord = { ...s, status: "paid", receiptId, nearTx, paidAt: this.iso() };
+    await this.cfg.store.putSession(paid);
+    await this.enqueue(paid, "checkout.session.completed");
+  }
+
+  /** 1Click refunded a session payment to the payer; the session stays open for another try. */
+  async onRefunded(rec: PaymentRecord): Promise<void> {
+    if (!rec.sessionId) return;
+    const s = await this.cfg.store.getSession(rec.sessionId);
+    if (!s) return;
+    await this.enqueue(s, "checkout.payment.refunded", rec.refundReason ?? undefined);
+  }
+
+  /** Sessions past expiry with no payment in flight become expired. */
+  async expireSessions(): Promise<number> {
+    let n = 0;
+    for (const m of await this.cfg.store.listMerchants()) {
+      for (const s of await this.cfg.store.listSessions(m.id, 1000)) {
+        if (s.status !== "open" || Date.parse(s.expiresAt) > this.now()) continue;
+        const last = s.attempts.at(-1);
+        const rec = last ? await this.cfg.store.getPayment(last) : null;
+        if (rec && !["PENDING_DEPOSIT", "REFUNDED", "FAILED"].includes(rec.status)) continue; // money is moving: wait
+        const exp = { ...s, status: "expired" as const };
+        await this.cfg.store.putSession(exp);
+        await this.enqueue(exp, "checkout.session.expired");
+        n++;
+      }
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------------ webhooks
+
+  private async enqueue(s: CheckoutSessionRecord, type: WebhookEventType, refundReason?: string) {
+    const m = await this.cfg.store.getMerchant(s.merchantId);
+    if (!m?.webhookUrl) return;
+    const event: WebhookEvent = {
+      id: randomId("evt_"),
+      type,
+      created: this.iso(),
+      data: { session: await this.view(s), ...(refundReason ? { refundReason } : {}) },
+    };
+    const d: WebhookDelivery = {
+      id: event.id, merchantId: m.id, type, body: JSON.stringify(event), attempts: 0,
+      nextAttemptAt: this.iso(), status: "pending", lastError: null, createdAt: this.iso(),
+    };
+    await this.cfg.store.putWebhook(d);
+  }
+
+  /**
+   * Send due webhooks. 2xx = delivered. Anything else is retried with
+   * exponential backoff (10s, 20s, 40s ... ~21 min), then marked failed.
+   */
+  async deliverWebhooks(f: typeof fetch = fetch): Promise<{ delivered: number; failed: number }> {
+    let delivered = 0;
+    let failed = 0;
+    for (const d of await this.cfg.store.listDueWebhooks(this.iso())) {
+      const m = await this.cfg.store.getMerchant(d.merchantId);
+      if (!m?.webhookUrl) {
+        await this.cfg.store.putWebhook({ ...d, status: "failed", lastError: "no webhook URL" });
+        continue;
+      }
+      let error: string | null = null;
+      try {
+        const r = await f(m.webhookUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json", [SIGNATURE_HEADER]: await signWebhook(m.webhookSecret, d.body, Math.floor(this.now() / 1000)), "user-agent": "Cascade-Webhooks/1" },
+          body: d.body,
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (r.status < 200 || r.status >= 300) error = `HTTP ${r.status}`;
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+      const attempts = d.attempts + 1;
+      if (!error) {
+        await this.cfg.store.putWebhook({ ...d, attempts, status: "delivered", lastError: null });
+        delivered++;
+      } else if (attempts >= WEBHOOK_MAX_ATTEMPTS) {
+        await this.cfg.store.putWebhook({ ...d, attempts, status: "failed", lastError: error });
+        failed++;
+      } else {
+        await this.cfg.store.putWebhook({ ...d, attempts, lastError: error, nextAttemptAt: this.iso(this.now() + 10_000 * 2 ** (attempts - 1)) });
+      }
+    }
+    return { delivered, failed };
+  }
+}
+
+/** Webhook URLs must be https (http allowed only for localhost, for development). */
+export function validateWebhookUrl(u: string): void {
+  let url: URL;
+  try {
+    url = new URL(u);
+  } catch {
+    throw new CheckoutError(400, "webhookUrl is not a URL");
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) throw new CheckoutError(400, "webhookUrl must be https");
+}
+
+/** Plug checkout into the settler (services/settler SettlerHooks). */
+export function checkoutHooks(c: Checkout, f: typeof fetch = fetch) {
+  return {
+    receiptHash: async (rec: PaymentRecord) => {
+      if (!rec.sessionId) return null;
+      const s = await c.cfg.store.getSession(rec.sessionId);
+      return s ? Checkout.receiptHash(s) : null;
+    },
+    recorded: (rec: PaymentRecord, receiptId: number | null, tx: string) => c.onRecorded(rec, receiptId, tx),
+    refunded: (rec: PaymentRecord) => c.onRefunded(rec),
+    afterTick: async () => {
+      await c.expireSessions();
+      await c.deliverWebhooks(f);
+    },
+  };
+}

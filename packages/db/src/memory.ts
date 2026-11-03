@@ -1,4 +1,7 @@
-import { matches, type BatchDoc, type InvoiceDoc, type PaymentFilter, type PaymentRecord, type Store } from "./records.js";
+import {
+  matches, type ApiKey, type BatchDoc, type CheckoutSessionRecord, type InvoiceDoc, type Merchant, type PaymentFilter, type PaymentRecord, type Store,
+  type WebhookDelivery,
+} from "./records.js";
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -6,6 +9,10 @@ export class MemoryStore implements Store {
   private invoices = new Map<number, InvoiceDoc>();
   private payments = new Map<string, PaymentRecord>();
   private batches = new Map<number, BatchDoc>();
+  private merchants = new Map<string, Merchant>();
+  private keys = new Map<string, ApiKey>();
+  private sessions = new Map<string, CheckoutSessionRecord>();
+  private hooks = new Map<string, WebhookDelivery>();
 
   async putInvoice(doc: InvoiceDoc) {
     this.invoices.set(doc.id, clone(doc));
@@ -36,5 +43,50 @@ export class MemoryStore implements Store {
   }
   async listBatches(owner?: string) {
     return [...this.batches.values()].filter((b) => owner === undefined || b.owner === owner).map(clone);
+  }
+
+  async putMerchant(m: Merchant) {
+    this.merchants.set(m.id, clone(m));
+  }
+  async getMerchant(id: string) {
+    const m = this.merchants.get(id);
+    return m ? clone(m) : null;
+  }
+  async findMerchantByAccount(account: string) {
+    const m = [...this.merchants.values()].find((x) => x.account === account);
+    return m ? clone(m) : null;
+  }
+  async listMerchants() {
+    return [...this.merchants.values()].map(clone);
+  }
+  async putApiKey(k: ApiKey) {
+    this.keys.set(k.hash, clone(k));
+  }
+  async getApiKey(hash: string) {
+    const k = this.keys.get(hash);
+    return k ? clone(k) : null;
+  }
+  async putSession(s: CheckoutSessionRecord) {
+    this.sessions.set(s.id, clone(s));
+  }
+  async getSession(id: string) {
+    const s = this.sessions.get(id);
+    return s ? clone(s) : null;
+  }
+  async listSessions(merchantId: string, limit = 50) {
+    return [...this.sessions.values()].filter((s) => s.merchantId === merchantId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit).map(clone);
+  }
+  async findSessionByIdempotencyKey(merchantId: string, key: string) {
+    const s = [...this.sessions.values()].find((x) => x.merchantId === merchantId && x.idempotencyKey === key);
+    return s ? clone(s) : null;
+  }
+  async putWebhook(w: WebhookDelivery) {
+    this.hooks.set(w.id, clone(w));
+  }
+  async listDueWebhooks(nowIso: string) {
+    return [...this.hooks.values()].filter((w) => w.status === "pending" && w.nextAttemptAt <= nowIso).map(clone);
+  }
+  async listWebhooks(merchantId: string) {
+    return [...this.hooks.values()].filter((w) => w.merchantId === merchantId).map(clone);
   }
 }

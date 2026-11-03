@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@cascade/api':
+        specifier: workspace:*
+        version: link:services/api
       '@cascade/core':
         specifier: workspace:*
         version: link:packages/core
@@ -26,12 +29,18 @@ importers:
       '@cascade/relayer':
         specifier: workspace:*
         version: link:services/relayer
+      '@cascade/sdk':
+        specifier: workspace:*
+        version: link:packages/sdk
       '@cascade/settler':
         specifier: workspace:*
         version: link:services/settler
       '@cascade/sputnik':
         specifier: workspace:*
         version: link:packages/sputnik
+      '@hono/node-server':
+        specifier: 2.1.5
+        version: 2.1.5(hono@4.12.34)
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
@@ -80,9 +89,15 @@ importers:
       '@cascade/oneclick':
         specifier: workspace:*
         version: link:../oneclick
+      '@cascade/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@cascade/sputnik':
         specifier: workspace:*
         version: link:../sputnik
+      '@noble/hashes':
+        specifier: 2.2.0
+        version: 2.2.0
       near-api-js:
         specifier: 7.4.0
         version: 7.4.0
@@ -118,6 +133,37 @@ importers:
       '@cascade/core':
         specifier: workspace:*
         version: link:../core
+
+  services/api:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@cascade/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@cascade/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../../packages/near
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../../packages/oneclick
+      '@cascade/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@hono/node-server':
+        specifier: 2.1.5
+        version: 2.1.5(hono@4.12.34)
+      hono:
+        specifier: 4.12.34
+        version: 4.12.34
+    devDependencies:
+      '@cascade/settler':
+        specifier: workspace:*
+        version: link:../settler
 
   services/relayer:
     dependencies:

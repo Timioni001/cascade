@@ -14,15 +14,21 @@ import { appCalls, daoCalls, DaoReader, ftCalls } from "@cascade/near";
 import { payrollPolicy, registerOwnerProposal, functionCallProposal } from "@cascade/sputnik";
 import { createWorld, ids, type Person, type World } from "../../scripts/sandbox/world.js";
 import { personalFlow, teamFlow, type PersonalResult, type TeamResult } from "../../scripts/sandbox/flows.js";
+import { checkoutFlow, type CheckoutResult } from "../../scripts/sandbox/checkout-flow.js";
+import { silent } from "../../scripts/sandbox/flows.js";
+import { KeyPair } from "near-api-js";
+import { ONBOARDING_RECIPIENT, onboardingMessage } from "@cascade/engine";
 
 let w: World;
 let personal: PersonalResult;
 let team: TeamResult;
+let shop: CheckoutResult;
 
 beforeAll(async () => {
   w = await createWorld();
   personal = await personalFlow(w);
   team = await teamFlow(w, personal.ada);
+  shop = await checkoutFlow(w, silent);
 });
 
 afterAll(async () => {
@@ -192,5 +198,38 @@ describe("Sputnik v2 as deployed: a vote's `proposal` argument is not checked", 
     // ...and the relayer refuses to pay for that same lying vote.
     const v3 = await w.plainAccount("v3");
     await expect(v3.gasless(daoCalls(dao).act(id, "VoteApprove", lie))).rejects.toThrow(/only its registration proposal/);
+  });
+});
+
+describe("checkout (merchant API + SDK + webhooks, real chain)", () => {
+  it("the shop is paid directly, gets a bound receipt and a verified webhook", () => {
+    expect(shop.session.status).toBe("paid");
+    expect(shop.merchantUsdcDelta).toBe(25_000_000n);
+    expect(shop.cascadeHeldAnything).toBe(false);
+    expect(shop.receiptHashMatches).toBe(true);
+    expect(shop.webhook?.type).toBe("checkout.session.completed");
+    expect(shop.webhookRejectedForgery).toBe(true);
+  });
+
+  async function onboardWith(account: string, signer: { signNep413Message: (a: { message: string; recipient: string; nonce: Uint8Array }) => Promise<{ publicKey: { toString(): string }; signature: Uint8Array }> }, signerId = account) {
+    const issuedAt = new Date().toISOString();
+    const nonce = crypto.getRandomValues(new Uint8Array(32));
+    const sig = await signer.signNep413Message({ message: onboardingMessage({ account, name: "Shop", issuedAt }), recipient: ONBOARDING_RECIPIENT, nonce });
+    return fetch(`${w.apiUrl}/v1/merchants`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account, name: "Shop", proof: { signer: signerId, publicKey: sig.publicKey.toString(), signature: Buffer.from(sig.signature).toString("base64"), nonce: Buffer.from(nonce).toString("base64"), issuedAt } }),
+    });
+  }
+
+  it("NEP-413 onboarding fails with a key the account does not have", async () => {
+    const victim = await funded("victim-shop", "0");
+    const stranger = w.chain.account(victim.id, KeyPair.fromRandom("ed25519")); // claims to be victim, wrong key
+    expect((await onboardWith(victim.id, stranger)).status).toBe(401);
+    expect((await onboardWith(victim.id, victim.full)).status).toBe(201);
+  });
+
+  it("a DAO preparer can onboard the DAO as a merchant", async () => {
+    expect((await onboardWith(team.dao, personal.ada.full, personal.ada.id)).status).toBe(201);
   });
 });

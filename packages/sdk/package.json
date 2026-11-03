@@ -1,10 +1,17 @@
 {
   "name": "@cascade/sdk",
   "version": "0.1.0",
-  "private": true,
+  "description": "Accept any crypto on any chain, settle in USDC on NEAR. Checkout sessions, a Pay button, signed webhooks.",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./browser": "./src/browser.ts",
+    "./evm": "./src/evm.ts",
+    "./webhooks": "./src/webhooks.ts"
+  },
+  "sideEffects": false
 }
