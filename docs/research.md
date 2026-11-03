@@ -32,11 +32,19 @@ Live checks (free dry quotes, no money):
 | --- | --- |
 | Dry `EXACT_OUTPUT` quote, ETH on Base -> 5 USDC on NEAR, no JWT | 200. 0.00222 ETH (~$5.07). No deposit address (as documented). Response adds `appFees: [{fee: 20}]`: the 0.2% unauthenticated fee is real |
 | Dry quote with `confidentiality: "basic"`, no JWT | 401 "User authentication is required for confidential intent quotes" |
+| Dry quote USDC on Base -> 1 USDC on NEAR, no JWT | 200, pay 1.010309 USDC. The unauthenticated `appFees` entry here was **1 bps**, versus 20 bps on ETH -> USDC: the fee depends on the route |
+| Dry quote to a NEAR recipient that does not exist | 400 "Internal server error". The same quote to an existing account works, at $1 and $5. Recipients must exist before quoting |
+| Dry quote with `customRecipientMsg: {"split":0}` | Accepted and echoed back. Whether it is honoured on delivery is spike `split` |
+| Dry quote with our `appFees` of 30 bps, no JWT | Accepted, but 1Click **splits it**: 15 bps to our recipient, 15 bps to its own fee account. Payer pays 1.013247 instead of 1.010309. With a partner JWT the full fee should be ours (to confirm) |
+| Dry quote with `refundType: INTENTS`, `refundTo` a NEAR account | Accepted (used for x402 payments when the agent gives no refund address) |
 
-| Dry quote USDC on Base -> 1 USDC on NEAR, no JWT (2026-11-03) | 200, pay 1.010309 USDC. The unauthenticated `appFees` entry here was **1 bps**, versus 20 bps on ETH -> USDC: the fee depends on the route |
-| Dry quote to a NEAR recipient that does not exist (2026-11-03) | 400 "Internal server error". The same quote to an existing account works, at $1 and $5. Recipients must exist before quoting |
+So private payments need the partner JWT from partners.near-intents.org, and so does keeping our whole fee. `MockOneClick` reproduces the behaviours above (except the fee split).
 
-So private payments need the partner JWT from partners.near-intents.org. `MockOneClick` reproduces all three behaviours.
+## x402 (agent payments)
+
+- Spec: github.com/coinbase/x402, `specs/x402-specification-v2.md` and `specs/transports-v2/http.md` (read 2026-11-03). v2 uses headers `PAYMENT-REQUIRED` (402, base64 JSON `{x402Version: 2, error, resource, accepts[]}`), `PAYMENT-SIGNATURE` (client, base64 `{x402Version, resource, accepted, payload}`) and `PAYMENT-RESPONSE` (settlement). Networks are CAIP-2 (`eip155:8453`).
+- The Ping facilitator that the Track 08 page points to implements x402 v2 with `scheme: "exact"` on `eip155:8453` (Base USDC only), `payTo` = a NEAR Intents deposit address, and `payload.txHash` as the proof, settling to a NEAR recipient through 1Click. Cascade uses the same shape, so x402 clients that can send a tx hash work, and offers any chain 1Click supports (up to 3 options per 402) instead of Base only.
+- Cascade binds each 402 to one checkout session and to `"METHOD url"`, and hands out exactly one successful response per payment (`already_used` on replay, `resource_mismatch` for another URL).
 
 Asset ids from `GET /v0/tokens` (215 tokens): USDC on NEAR `nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` (6 decimals), ETH on Base `nep141:base.omft.near`, SOL `nep141:sol.omft.near`, USDC on Solana `nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near`, USDC on Base/Arbitrum/Ethereum in `packages/core/src/chains.ts`.
 
@@ -64,9 +72,15 @@ Asset ids from `GET /v0/tokens` (215 tokens): USDC on NEAR `nep141:17208628f84f5
 | Meta-transaction returned no value and looked successful when the inner call failed | The outer transaction only runs the delegate action | Read result and failure from the target contract's receipts (`parseOutcome(o, target)`) |
 | Sandbox would not start in some containers | nearcore requires a 65535 open-file limit; some containers cap it at 20000 | `scripts/sandbox/rlimit-shim.c`, used only when the hard limit is too low |
 | A DAO member's limited key could not propose | Function-call keys are bound to one receiver (the app) | DAO calls are signed with the member's full key (still relayed and free). Planned: a per-team limited key |
+| Revenue-split payouts were never paid | The contract creates a split's payout batch itself, so the settler (which only tracked batches it created) never saw it | The settler scans new batch ids each tick and adopts funded ones |
+| The deploy rehearsal failed with LackBalanceForState | The app contract grew (splits); the fixed 3 NEAR no longer covered its storage | Fund the app from its wasm size (10^19 yocto per byte) plus headroom |
+| `pnpm server` silently did nothing | `server` is a built-in pnpm command (its store server) and shadows a script of the same name | The script is `pnpm backend` |
+| Next.js could not resolve `./evm.js` inside a workspace package | Webpack does not map ESM `.js` imports onto `.ts` sources | `resolve.extensionAlias` in next.config |
 
 ## Open questions (need a decision or a mainnet test)
 
 1. Can Confidential Intents deliver to a public address on another chain while hiding the NEAR-side amount? Our outgoing private line pays a 1Click deposit address with a public `ft_transfer`, so the amount is visible on NEAR; only the destination side is private. See docs/spikes.md.
 2. Does a 1Click deposit address on NEAR (an implicit account) need a USDC storage deposit before receiving? We register it in `execute_batch` either way (refunded if not needed).
 3. What does 1Click do with a deposit sent after the quote deadline? The contract never pays after the deadline, but a 1Click refund to the owner is the fallback.
+4. Does 1Click honour `customRecipientMsg` on delivery (ft_transfer_call with our msg)? Revenue splits depend on it; 1Click calls it HIGHLY EXPERIMENTAL. Spike `split`. If it fails, split sessions must be disabled and splits done by the merchant funding a batch instead.
+5. With a partner JWT, is the whole `appFees` share ours (without one, 1Click kept half)?

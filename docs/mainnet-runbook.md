@@ -21,9 +21,9 @@ chmod 600 .env
 
 ## 2. Mainnet
 
-Cost: about 12 NEAR for accounts and contract storage (most of it is refundable storage), plus ~$1 per spike.
+Cost: about 15 NEAR for accounts and contract storage (the app is funded from its code size, ~5.3 NEAR; storage is refundable if an account is deleted), plus ~$1 per spike. Fund the root with ~20 NEAR.
 
-1. Create a **dedicated** mainnet account for Cascade (e.g. `cascade-yourname.near`) with ~15 NEAR. Do not use your personal account: the factory contract is deployed onto it.
+1. Create a **dedicated** mainnet account for Cascade (e.g. `cascade-yourname.near`) with ~20 NEAR. Do not use your personal account: the factory contract is deployed onto it.
 2. In `.env`: `NEAR_NETWORK=mainnet`, the new root id and key, `USDC_CONTRACT_ID=17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, `SPUTNIK_FACTORY_ID=sputnik-dao.near`. Remove the testnet relayer/settler lines (or keep a separate `.env.testnet`).
 3. `pnpm deploy:cascade --dry-run`, then `pnpm deploy:cascade`.
 4. Commit `deployments/mainnet.json` (public information only) and set `CASCADE_APP_ID` / `CASCADE_FACTORY_ID` in `.env`.
@@ -37,6 +37,7 @@ Cost: about 12 NEAR for accounts and contract storage (most of it is refundable 
 | Outgoing | `pnpm spike outgoing --chain base --recipient <your Base address>` | Needs `SPIKE_ACCOUNT_ID/KEY`: a NEAR account with a few USDC. Shows whether the deposit address needs a USDC storage deposit |
 | Private | `pnpm spike private --chain base --recipient <address>` | Needs `ONECLICK_JWT`. Afterwards look at both explorers and note what is visible |
 | Name, relay | `pnpm spike name`, `pnpm spike relay` | As on testnet |
+| Revenue split | `pnpm spike split --refund-to <your Base address>` | After name and relay. Pays $1 into a 90/10 split through 1Click's experimental `customRecipientMsg`. If no split batch appears, splits must stay off on mainnet |
 
 Each run appends to `deployments/mainnet-spikes.json` (no keys). Copy the transaction links into `docs/spikes.md` and the README.
 

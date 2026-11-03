@@ -12,5 +12,7 @@ NEAR Intents has no testnet, so a few questions can only be answered on mainnet.
 | 4 | Factory: create one name under our root account with the factory contract | Deploy factory, `create_name` once | ~0.05 NEAR | not run (needs the root account, which only the human can create) |
 | 5 | Relayer: one fee-free `register_owner` through our relayer | Deploy app, relay one delegate action | gas only | not run |
 | 6 | Private payment: with a partner JWT, request `confidentiality: "basic"` for USDC NEAR -> USDC Base and send $1. What is visible on NEAR and on Base? | Needs the JWT | ~$1 | not run, needs JWT |
+| 7 | Revenue split: does 1Click deliver with `customRecipientMsg` so the payment becomes a split batch? | `pnpm spike split --refund-to <addr>` after `name` and `relay` | ~$1 | not run |
+| 8 | Fee: with the partner JWT, does a 30 bps `appFees` arrive in full in our Intents account? | A real checkout with `CASCADE_FEE_BPS=30` | ~$1 | not run, needs JWT |
 
 Write results here as they come in, with transaction links.

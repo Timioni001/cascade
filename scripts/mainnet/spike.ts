@@ -12,6 +12,7 @@
  *   private   same as outgoing with Confidential Intents (needs ONECLICK_JWT)
  *   name      [--name spike-<random>]   relayer creates <name>.<root> with the deployed factory
  *   relay     the name from `name` registers with Cascade through the relayer (fee-free)
+ *   split     --refund-to <your address>  pay $1 into a revenue split via customRecipientMsg (needs name + relay)
  *
  * Results (no keys) are appended to deployments/<network>-spikes.json.
  */
@@ -214,26 +215,95 @@ async function name(cfg: NetConfig, io: Io, a: Args) {
   recordSpike(cfg.network, { spike: "name", account: id, tx: r.hash });
 }
 
-async function relay(cfg: NetConfig, io: Io) {
+/** The spike name's account and its limited app key (from `pnpm spike name`). */
+function spikeName(): { id: string; appKey: KeyPairString } {
   const id = process.env.SPIKE_NAME_ACCOUNT_ID;
   const appKey = process.env.SPIKE_NAME_APP_KEY as KeyPairString | undefined;
   if (!id || !appKey) throw new Error("run `pnpm spike name` first");
+  return { id, appKey };
+}
+
+/** The spike name signs `call` with its limited key; the relayer submits it (NEP-366) and pays. */
+async function relayAs<T>(cfg: NetConfig, io: Io, call: Call, title: string) {
   if (!cfg.relayer.key) throw new Error("RELAYER_PRIVATE_KEY is required");
+  const { id, appKey } = spikeName();
   const chain = new Chain(cfg.rpc, cfg.network);
-  const user = chain.account(id, appKey);
+  const d = decodeSignedDelegate(await signMeta(chain.account(id, appKey), call));
+  const wrapped = relayCall(d.raw);
+  const ok = await io.approve({
+    title, signer: cfg.relayer.id, receiver: id,
+    details: [`inner (signed by ${id}): ${d.summary.receiverId}.${d.summary.calls.map((c) => `${c.method}(${JSON.stringify(c.args)})`).join(", ")}`],
+  });
+  if (!ok) return null;
+  const r = await chain.send<T>(chain.account(cfg.relayer.id, cfg.relayer.key), wrapped, { target: d.summary.receiverId });
+  if (!r.ok) throw new Error(`${title} failed: ${r.error}`);
+  return r;
+}
+
+async function relay(cfg: NetConfig, io: Io) {
+  const { id } = spikeName();
+  const chain = new Chain(cfg.rpc, cfg.network);
   const before = await chain.nearBalance(id);
-  const b64 = await signMeta(user, appCalls(cfg.app).registerOwner("Account", []));
-  const d = decodeSignedDelegate(b64);
   io.step(`${id} signs register_owner with its limited app key; the relayer submits and pays`);
-  const call = relayCall(d.raw);
-  const ok = await io.approve({ title: "relay NEP-366 delegate action", signer: cfg.relayer.id, receiver: id, details: [`inner: ${d.summary.receiverId}.${d.summary.calls.map((c) => c.method).join(",")}`, ...describeActions(call.actions).slice(0, 1)] });
-  if (!ok) return;
-  const r = await chain.send(chain.account(cfg.relayer.id, cfg.relayer.key), call, { target: cfg.app });
-  if (!r.ok) throw new Error(`relay failed: ${r.error}`);
+  const r = await relayAs(cfg, io, appCalls(cfg.app).registerOwner("Account", []), "relay register_owner (NEP-366)");
+  if (!r) return;
   const owner = await chain.view(cfg.app, "get_owner", { id });
   const after = await chain.nearBalance(id);
   io.log(`✓ tx ${r.hash}; owner: ${JSON.stringify(owner)}; user's NEAR change: ${Number(before - after) / 1e24}`);
   recordSpike(cfg.network, { spike: "relay", account: id, tx: r.hash, userNearSpent: (before - after).toString() });
+}
+
+/**
+ * Does 1Click deliver with customRecipientMsg, so a payment lands in a
+ * revenue split? (1Click marks it HIGHLY EXPERIMENTAL; revenue splits depend on it.)
+ * Creates a split for the spike name (90% name / 10% root), asks for a real
+ * quote to the app contract with msg {"split": id}, you pay $1, and the
+ * script checks that the contract turned it into a funded split batch.
+ */
+async function split(cfg: NetConfig, io: Io, oc: OneClick, a: Args) {
+  const amount = amountOf(a);
+  const asset = str(a, "asset", USDC_BY_CHAIN.base!);
+  const refundTo = str(a, "refund-to");
+  const { id } = spikeName();
+  const chain = new Chain(cfg.rpc, cfg.network);
+  if (!(await chain.view(cfg.app, "get_owner", { id }))) throw new Error(`${id} is not registered yet: run \`pnpm spike relay\` first`);
+
+  io.step(`Create a revenue split for ${id}: 90% ${id}, 10% ${cfg.root.id}`);
+  let splitId = typeof a.split === "string" ? Number(a.split) : null;
+  if (splitId === null) {
+    const r = await relayAs<{ id: number }>(cfg, io, appCalls(cfg.app).createSplit(id, [{ account: id, bps: 9000 }, { account: cfg.root.id, bps: 1000 }]), "create_split (fee-free)");
+    if (!r) return;
+    splitId = r.value!.id;
+    io.log(`✓ split #${splitId}, tx ${r.hash}`);
+  } else io.log(`using existing split #${splitId}`);
+
+  const msg = JSON.stringify({ split: splitId });
+  const req = incomingQuote({ payAsset: asset, owner: cfg.app, amountOut: amount, refundTo, dry: true, recipientMsg: msg });
+  io.step(`Quote: $${formatUsd(amount)} to ${cfg.app} with customRecipientMsg ${msg}`);
+  const dry = await oc.quote(req);
+  showQuote(io, req, dry);
+  const ok = await io.approve({ title: "Reserve a deposit address (real quote; nothing is sent yet)", signer: "1Click API", receiver: cfg.app, details: [`customRecipientMsg ${msg}`] });
+  if (!ok) return;
+  const nextBefore = (await chain.view<{ next_batch_id: number }>(cfg.app, "get_config")).next_batch_id;
+  const real = await oc.quote({ ...req, dry: false });
+  const dep = real.quote.depositAddress!;
+  io.step("Send it from your own wallet");
+  io.log(`amount: ${real.quote.amountInFormatted} (base units ${real.quote.amountIn}) of ${asset}`);
+  io.log(`to:     ${dep}${real.quote.depositMemo ? `   memo ${real.quote.depositMemo}` : ""}`);
+  const hash = (await io.ask("Paste the transaction hash once sent (or press Enter to just watch):")).trim();
+  if (hash) await oc.submitDeposit({ txHash: hash, depositAddress: dep }).catch((e: Error) => io.warn(e.message));
+  const s = await watch(oc, io, dep);
+
+  // Did the contract receive it as a split payment?
+  const next = (await chain.view<{ next_batch_id: number }>(cfg.app, "get_config")).next_batch_id;
+  let found: { id: number; total: string; status: string } | null = null;
+  for (let b = nextBefore; b < next; b++) {
+    const batch = await chain.view<{ id: number; owner: string; total: string; status: string }>(cfg.app, "get_batch", { id: b });
+    if (batch?.owner === id) found = batch;
+  }
+  if (found) io.log(`✓ the contract received it as split #${splitId}: batch #${found.id}, ${formatUsd(found.total)} USDC, ${found.status}. Run the backend (or execute_batch) to pay it out.`);
+  else io.warn("no split batch appeared: 1Click did not deliver with the message (or not yet). Check the NEAR tx in the status output.");
+  recordSpike(cfg.network, { spike: "split", splitId, account: id, depositAddress: dep, correlationId: real.correlationId, splitBatch: found, ...(s ? summarize(s) : { status: "unknown" }) });
 }
 
 // ------------------------------------------------------------ CLI
@@ -250,11 +320,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     else if (cmd === "private") await outgoing(cfg, io, oc, a, true);
     else if (cmd === "name") await name(cfg, io, a);
     else if (cmd === "relay") await relay(cfg, io);
+    else if (cmd === "split") await split(cfg, io, oc, a);
     else if (cmd === "status") {
       const s = await oc.status(str(a, "deposit"));
       console.log(JSON.stringify(summarize(s), null, 2));
     } else {
-      console.log("usage: pnpm spike <incoming|expired|outgoing|private|name|relay|status> [options]  (see scripts/mainnet/spike.ts)");
+      console.log("usage: pnpm spike <incoming|expired|outgoing|private|name|relay|split|status> [options]  (see scripts/mainnet/spike.ts)");
       process.exitCode = 1;
     }
   } catch (e) {

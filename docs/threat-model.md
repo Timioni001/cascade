@@ -51,6 +51,33 @@ New users get a full-access key generated in their browser, plus a function-call
 - **Embedding:** the checkout iframe posts messages only to the origin that opened it; the SDK accepts messages only from the Cascade origin, from that iframe, for that session. Everything except `/c/*` sends `X-Frame-Options: DENY`.
 - **Gap:** API rate limits and the NEP-413 nonce set are in-memory (one process).
 
+## Revenue splits
+
+- **Custody:** a split payment is held by the app contract only between arrival and payout. On arrival the contract creates a batch that is already funded, with the shares fixed when the split was created (splits are immutable); anyone, normally the settler, can push it out. Parts always add up to the payment (tested exhaustively, including the largest u128).
+- **Who can create a split:** the owner or one of its preparers. A preparer of a DAO could therefore create a split for the DAO that pays the preparer. Mitigation: a checkout session can only use a split whose owner is the merchant, and the shares are shown on the checkout page; a DAO that does not want this should not name preparers it does not trust. To consider: splits for a DAO owner created only through a DAO proposal.
+- **Dependency on 1Click's `customRecipientMsg`** (marked HIGHLY EXPERIMENTAL by 1Click): if 1Click delivered with a plain transfer instead, the USDC would sit in the app contract with no split attached and no way to attribute it. The contract never bounces a valid split payment (that refund would go back into Intents), and unknown split ids are refunded in full. Split sessions must stay off on mainnet until spike `split` passes.
+- **Dust:** payments below 0.01 USDC are refused so they cannot fill storage.
+
+## Refunds
+
+- A refund needs two signatures from the merchant's own key (`create_batch`, then the funding `ft_transfer_call`). Cascade prepares the line, but cannot send a refund, change its destination or its amount: the destination is the customer's own refund address from the original quote, hash-locked in the batch, and the API checks the on-chain batch (owner and hash) before handing out the funding call.
+- Total refunds per session cannot exceed what was paid (failed refunds do not count).
+- An x402 payment made without a refund address cannot be refunded by this flow (its 1Click refunds go to the merchant's Intents account instead).
+
+## Agent payments (x402)
+
+- Each 402 creates a session bound to `"METHOD url"`; a payment for one resource cannot unlock another (`resource_mismatch`), and a paid session unlocks exactly one response (`already_used` on replay; an in-process lock prevents two concurrent requests both succeeding).
+- The agent's `txHash` is only a hint to 1Click; success is decided by 1Click delivering to the merchant and the settler recording it, never by the client's claim.
+- 402 responses reserve real deposit addresses (up to 3 per request). A client spamming unpaid requests costs quote calls, bounded by the API's rate limits.
+
+## Fees
+
+The optional Cascade fee is a 1Click `appFees` entry paid by the customer on top of the price; the checkout page discloses it and the merchant still receives the exact amount. Without a partner JWT, 1Click keeps half of it (observed with dry quotes).
+
+## Merchant dashboard
+
+The dashboard keeps the secret key in the browser tab's session storage and calls the API through this site's server, which forwards only an allowlist of merchant paths. A script injected into the dashboard page could read the key while it is open: the dashboard loads no third-party scripts, and merchants can rotate keys (to build: rotation UI).
+
 ## Cross-chain lines
 
 - A line pays a 1Click deposit address fixed at batch creation. If the quote expires, the contract refuses to pay it and the money goes back to the owner.

@@ -30,10 +30,11 @@ Most of the code was written by Claude Code (Anthropic) working with the team le
 | near-sandbox | 0.3.4 | Local NEAR node for demo and tests |
 | hono, @hono/node-server | 4.12.34, 2.1.5 | Relayer and checkout API servers |
 | next, react, react-dom | 15.5.28, 19.1.10 | Hosted checkout page and demo shop |
+| qrcode | 1.5.4 | QR codes for wallet payment links |
 | vitest, tsx, typescript | 4.1.12, 4.23.15, 5.9.3 | Tests and tooling |
 | Sputnik DAO v2 (wasm) | mainnet code hash 2Zof1Tyy... | Real DAO contract in the sandbox; not modified. See contracts/res/README.md |
 
-No templates or boilerplate were used. The 1Click types were transcribed from its OpenAPI spec.
+No templates or boilerplate were used. The 1Click types were transcribed from its OpenAPI spec; the x402 messages follow the x402 v2 specification (github.com/coinbase/x402).
 
 ## Other projects
 

@@ -53,7 +53,9 @@ scripts/
   demo-sandbox.ts   pnpm demo
 ```
 
-Planned, not built yet: dashboards (invoices, batches, approvals), Solana/NEAR wallet buttons in checkout, `scripts/demo-mainnet.ts`. Cut: the AI assistant.
+Also: `services/server` (one process: API + relayer + settler), `scripts/mainnet` (deploy and spikes), `apps/web` pages `/c/[id]` checkout, `/r/[id]` receipt, `/dashboard`, `/shop` (demo merchant, with an x402-paid `/api/shop/forecast`).
+
+Not built: Solana/NEAR wallet buttons in checkout (QR codes cover phone wallets), team dashboards. Cut: the AI assistant.
 
 ## Checkout flow
 
@@ -62,6 +64,30 @@ merchant server ──sk_ key──▶ POST /v1/checkout/sessions ──▶ sess
 customer ──▶ /c/cs_… (modal iframe via @cascade/sdk) ──▶ preview (dry quote) ──▶ pay (real quote, recipient = merchant)
 customer wallet ──any coin, any chain──▶ 1Click deposit address ──NEAR Intents──▶ USDC to merchant (account or DAO)
 settler ──/v0/status SUCCESS──▶ record_link_payment(receipt hash = session) ──▶ signed webhook to merchant server
+```
+
+Revenue split (session with `splitId`):
+
+```
+1Click delivers with customRecipientMsg {"split": id} ──▶ usdc.ft_transfer_call(app, amount, msg)
+app.ft_on_transfer ──▶ new batch, already funded, one line per share (parts sum to amount)
+settler discovers the batch (scans new batch ids) ──▶ execute_batch ──▶ each share paid
+```
+
+Refund:
+
+```
+merchant ──sk_──▶ POST /v1/checkout/sessions/:id/refunds ──▶ outgoing quote to the customer's refund address, one hash-locked line
+merchant key ──▶ app.create_batch(lines) ──▶ POST /v1/refunds/:id/confirm {batchId} (API checks owner + hash on-chain)
+merchant key ──▶ usdc.ft_transfer_call(app, total, {batch_id, hash}) ──▶ settler pays ──▶ 1Click delivers ──▶ webhook refund.succeeded
+```
+
+Agent payment (x402 v2):
+
+```
+agent ──GET──▶ merchant API ──x402Guard──▶ POST /v1/x402/prepare ──▶ 402 + PAYMENT-REQUIRED (one deposit address per asset)
+agent wallet ──pays one option──▶ retries with PAYMENT-SIGNATURE {txHash}
+x402Guard ──▶ POST /v1/x402/settle ──▶ payment_pending … until the settler records delivery ──▶ success (once) ──▶ 200 + PAYMENT-RESPONSE
 ```
 
 ## Design decisions
