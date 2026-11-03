@@ -22,7 +22,8 @@
     "dev": "tsx scripts/dev-sandbox.ts",
     "test:e2e": "node scripts/e2e/checkout.e2e.cjs",
     "deploy:cascade": "tsx scripts/mainnet/deploy.ts",
-    "spike": "tsx scripts/mainnet/spike.ts"
+    "spike": "tsx scripts/mainnet/spike.ts",
+    "agent": "tsx scripts/agent-demo.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

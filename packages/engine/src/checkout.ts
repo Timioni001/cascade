@@ -416,7 +416,7 @@ export class Checkout {
       delivery: rec
         ? {
             status: rec.status,
-            paidWith: d ? { asset: d.quoteRequest.originAsset, chain: rec.originChain, amount: d.quote.amountInFormatted } : null,
+            paidWith: d ? { asset: d.quoteRequest.originAsset, symbol: assetSymbol(d.quoteRequest.originAsset), chain: rec.originChain, amount: d.quote.amountInFormatted } : null,
             depositAddress: rec.depositAddress,
             nearTx: rec.nearTx,
             quoteSignature: d?.signature ?? null,

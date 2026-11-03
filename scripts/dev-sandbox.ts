@@ -51,7 +51,9 @@ const web = spawn("pnpm", ["--filter", "@cascade/web", "dev"], {
     CASCADE_WEBHOOK_SECRET: keys.webhookSecret,
   },
 });
-console.log(`\n  Demo shop:  ${WEB}/shop\n`);
+console.log(`\n  Demo shop:    ${WEB}/shop`);
+console.log(`  Dashboard:    ${WEB}/dashboard   (secret key: ${keys.secretKey})`);
+console.log(`  Agent (x402): in another terminal, pnpm agent\n`);
 
 const stop = async () => {
   if (stopping) return;

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildEvmTransfer, isEvmChain, payWithEvmWallet, type Eip1193 } from "@cascade/sdk/evm";
 import type { CheckoutSession, PayAsset, PaymentPreview } from "@cascade/sdk";
 import type { CheckoutMessage } from "@cascade/sdk/browser";
+import { paymentUri } from "@cascade/sdk/uris";
+import { PaymentQr } from "../../components/PaymentQr";
+import { API } from "../../../lib/api";
 
-const API = process.env.NEXT_PUBLIC_CASCADE_API ?? "http://127.0.0.1:8788";
 const SANDBOX = process.env.NEXT_PUBLIC_SANDBOX === "1";
 
 /** What we show first. Everything else 1Click supports is under "More coins". */
@@ -193,7 +195,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
             <div className={`status ok`}><span className="dot" />Paid</div>
             <div className="small muted">
               {session.merchant.name} received ${session.amountFormatted} in USDC on NEAR.
-              {session.receipt && <> Receipt #{session.receipt.id} is recorded on-chain{session.receipt.nearTx ? <> (tx <span className="mono">{session.receipt.nearTx.slice(0, 10)}…</span>)</> : null}.</>}
+              {session.receipt && <> Receipt #{session.receipt.id} is recorded on-chain. <a href={`/r/${session.id}`} target="_blank" rel="noreferrer">Verify receipt ↗</a></>}
             </div>
             {session.successUrl && !embed && <a className="btn" href={session.successUrl} style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Back to {session.merchant.name}</a>}
           </div>
@@ -204,6 +206,11 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
             <div className="row"><strong>{short(p.amountInFormatted)} {assets.find((a) => a.assetId === p.asset)?.symbol ?? ""}</strong><span className="muted small">on {chainName(p.chain)}</span></div>
             <div className="small muted">to this one-time address</div>
             <div className="mono">{p.depositAddress}</div>
+            {(() => {
+              const a = assets.find((x) => x.assetId === p.asset);
+              const uri = a ? paymentUri({ chain: p.chain, depositAddress: p.depositAddress, amount: p.amountIn, decimals: a.decimals, tokenContract: a.contractAddress, label: session.merchant.name, message: session.description, memo: p.depositMemo }) : null;
+              return uri ? <PaymentQr uri={uri} label={`${short(p.amountInFormatted)} ${a!.symbol} on ${chainName(p.chain)}`} /> : null;
+            })()}
             {p.depositMemo && <div className="small">Memo (required): <span className="mono">{p.depositMemo}</span></div>}
             <button className="btn secondary" onClick={() => navigator.clipboard.writeText(p.depositAddress).then(() => setCopied(true))}>{copied ? "Copied" : "Copy address"}</button>
             <div className="small muted">Use this address once, before {new Date(p.deadline).toLocaleTimeString()}. If anything goes wrong your coins are refunded to you automatically.</div>
@@ -242,6 +249,10 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
           </div>
         )}
         {error && <div className="error small">{error}</div>}
+        {session.split && !paid && (
+          <div className="small muted">This payment is shared automatically between {session.split.shares.length} recipients, on-chain.</div>
+        )}
+        {session.feeBps > 0 && !paid && <div className="small muted">The price shown includes a {session.feeBps / 100}% service fee. {session.merchant.name} receives exactly ${session.amountFormatted}.</div>}
         <div className="small muted" style={{ textAlign: "center" }}>Settles in USDC on NEAR through NEAR Intents</div>
       </div>
     </main>

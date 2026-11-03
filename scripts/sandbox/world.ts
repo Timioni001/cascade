@@ -9,9 +9,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_ACCOUNT_ID, DEFAULT_PRIVATE_KEY, type Sandbox } from "near-sandbox";
-import { KeyPair, type Account, type KeyPairString } from "near-api-js";
+import { KeyPair, actions, type Account, type KeyPairString } from "near-api-js";
 import { MemoryStore } from "@cascade/db";
-import { Checkout, Engine, checkoutHooks, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
+import { Checkout, Engine, Refunds, checkoutHooks, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { apiApp } from "@cascade/api";
@@ -57,6 +57,7 @@ export interface World {
   sink: RelaySink;
   settler: Settler;
   checkout: Checkout;
+  refunds: Refunds;
   /** Base URL of the checkout API served from this process, e.g. http://127.0.0.1:41234 */
   apiUrl: string;
   as: (account: Account) => Executor;
@@ -125,7 +126,13 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
   const store = new MemoryStore();
   const usdcBalance = (a: string) => chain.ftBalance(ids.usdc, a);
   const driver: MockDriver = {
-    deliverUsdc: async (recipient, amount) => expectOk(await chain.send(solver, ftCalls(ids.usdc).mint(recipient, amount)), "solver delivery").hash,
+    // Like 1Click: a plain transfer, or with customRecipientMsg an ft_transfer_call (used for revenue splits).
+    deliverUsdc: async (recipient, amount, msg) => {
+      if (msg === undefined) return expectOk(await chain.send(solver, ftCalls(ids.usdc).mint(recipient, amount)), "solver delivery").hash;
+      expectOk(await chain.send(solver, ftCalls(ids.usdc).mint(ids.solver, amount)), "solver mint");
+      const call = { receiverId: ids.usdc, label: "deliver with msg", actions: [actions.functionCall("ft_transfer_call", { receiver_id: recipient, amount: amount.toString(), msg }, 100n * 10n ** 12n, 1n)] };
+      return expectOk(await chain.send(solver, call), "solver delivery (ft_transfer_call)").hash;
+    },
     usdcBalance,
   };
   // `authenticated: true` = behave as if a 1Click partner JWT is configured,
@@ -137,9 +144,11 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
     limits: { namesPerIp: { max: 100, windowMs: 86_400_000 } },
   });
   const sink: RelaySink = { relay: (b64) => relayer.relay(b64, { ip: "127.0.0.1" }) };
-  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000" });
-  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout) });
-  const server = serve({ fetch: apiApp({ checkout, dev: { oneclick } }).fetch, port: opts.apiPort ?? 0, hostname: "127.0.0.1" });
+  // 0.3% Cascade fee, paid by customers into an Intents account (shown on the checkout page).
+  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000", fee: { recipient: ids.factory, bps: 30 } });
+  const refunds = new Refunds(checkout);
+  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout, fetch, refunds) });
+  const server = serve({ fetch: apiApp({ checkout, refunds, dev: { oneclick } }).fetch, port: opts.apiPort ?? 0, hostname: "127.0.0.1" });
   await new Promise<void>((r) => (server.listening ? r() : server.once("listening", () => r())));
   const apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
@@ -180,7 +189,7 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
   }
 
   return {
-    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler, checkout, apiUrl,
+    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler, checkout, refunds, apiUrl,
     as: direct,
     usdcBalance,
     nearBalance: (a) => chain.nearBalance(a),
@@ -195,7 +204,6 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
   };
 }
 
-import { actions } from "near-api-js";
 function fnInit(method: string, args: object) {
   return actions.functionCall(method, args, 100n * 10n ** 12n, 0n);
 }

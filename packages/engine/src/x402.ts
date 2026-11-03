@@ -109,7 +109,7 @@ export class AgentPayments {
       const fresh = await this.c.getSession(s.id);
       if (fresh.consumedAt) return fail("already_used", network);
       await this.c.cfg.store.putSession({ ...fresh, consumedAt: new Date(this.now()).toISOString() });
-      return { success: true, transaction: fresh.nearTx ?? "", network: CAIP2.near! };
+      return { success: true, transaction: fresh.nearTx ?? "", network: `near:${this.c.cfg.chain.networkId}` };
     } finally {
       this.settling.delete(s.id);
     }

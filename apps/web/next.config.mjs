@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 export default {
   transpilePackages: ["@cascade/sdk"],
+  // Workspace packages use ESM-style "./x.js" imports of TypeScript files.
+  webpack(config) {
+    config.resolve.extensionAlias = { ".js": [".ts", ".tsx", ".js"] };
+    return config;
+  },
   async headers() {
     return [
       {
