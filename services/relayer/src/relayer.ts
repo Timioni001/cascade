@@ -1,6 +1,6 @@
 import { isValidName, RESERVED_NAMES } from "@cascade/core";
 import {
-  CascadeReader, decodeSignedDelegate, factoryCalls, relayCall, type Chain, type TxResult,
+  CascadeReader, DaoReader, decodeSignedDelegate, factoryCalls, relayCall, type Chain, type TxResult,
 } from "@cascade/near";
 import type { Account } from "near-api-js";
 import { checkDelegate, type RelayPolicyConfig } from "./policy.js";
@@ -57,6 +57,7 @@ export class Relayer {
       maxGas: 300n * 10n ** 12n,
       maxTotalGas: 300n * 10n ** 12n,
       daoFactory: d.daoFactory,
+      proposalKind: async (dao, id) => (await new DaoReader(d.chain, dao).proposal(id)).kind,
       isRegisteredDao: async (acct) => {
         const hit = this.daoCache.get(acct);
         if (hit !== undefined) return hit;

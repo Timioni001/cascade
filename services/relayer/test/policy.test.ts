@@ -11,6 +11,9 @@ const cfg: RelayPolicyConfig = {
   maxTotalGas: 300n * T,
   isRegisteredDao: async (a) => a === "studio.sputnik-dao.near",
   daoFactory: "sputnik-dao.near",
+  // proposal 0 on newteam is a registration; proposal 1 is something else
+  proposalKind: async (_dao, id) =>
+    id === 0 ? registerOwnerProposal("app.cascade.near", []).kind : fundBatchProposal({ usdc: "usdc.near", cascade: "app.cascade.near", batch: { id: 1, hash: "h", total: "1", line_count: 1 } }).kind,
 };
 const d = (receiverId: string, calls: DelegateSummary["calls"], otherActions: string[] = []): DelegateSummary => ({
   senderId: "ada.cascade.near", receiverId, maxBlockHeight: 100n, publicKey: "ed25519:x", calls, otherActions,
@@ -46,7 +49,9 @@ describe("relay policy", () => {
     expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 0, action: "VoteApprove", proposal: reg.kind })]), cfg)).ok).toBe(true);
     const other = fundBatchProposal({ usdc: cfg.usdc, cascade: cfg.app, batch: { id: 1, hash: "h", total: "1", line_count: 1 } });
     expect((await checkDelegate(d(newDao, [call("add_proposal", { proposal: other })]), cfg)).ok).toBe(false);
-    expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 0, action: "VoteApprove", proposal: other.kind })]), cfg)).ok).toBe(false);
+    // The vote's own `proposal` argument is ignored: what counts is what is stored.
+    expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 0, action: "VoteApprove", proposal: other.kind })]), cfg)).ok).toBe(true);
+    expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 1, action: "VoteApprove", proposal: reg.kind })]), cfg)).ok).toBe(false);
     expect((await checkDelegate(d("notadao.near", [call("add_proposal", { proposal: reg })]), cfg)).ok).toBe(false);
   });
 

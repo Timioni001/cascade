@@ -7,17 +7,18 @@
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
     "demo": "tsx scripts/demo-sandbox.ts",
-    "demo:mainnet": "tsx scripts/demo-mainnet.ts",
-    "test": "pnpm test:ts && pnpm test:contracts",
-    "test:ts": "vitest run",
-    "test:contracts": "cd contracts && cargo test",
+    "test": "pnpm test:unit && pnpm test:sandbox",
+    "test:unit": "vitest run --project unit",
     "test:sandbox": "vitest run --project sandbox",
+    "test:contracts": "cd contracts && cargo test",
     "build:contracts": "bash scripts/build-contracts.sh",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "relayer": "pnpm --filter @cascade/relayer start",
+    "settler": "pnpm --filter @cascade/settler start"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

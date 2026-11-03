@@ -18,6 +18,8 @@ export interface RelayPolicyConfig {
   isRegisteredDao: (account: string) => Promise<boolean>;
   /** Sputnik factory account, e.g. sputnik-dao.near. DAOs are its sub-accounts. */
   daoFactory: string;
+  /** The kind of proposal `id` as stored on `dao` (view get_proposal), or null. */
+  proposalKind: (dao: string, id: number) => Promise<unknown>;
 }
 
 /** Methods on the app contract a user may call through the relayer. */
@@ -89,15 +91,20 @@ export async function checkDelegate(d: DelegateSummary, cfg: RelayPolicyConfig):
   }
 
   // A Sputnik DAO that has not joined yet: the only thing we pay for is the
-  // proposal (and votes) to register it with Cascade. Sputnik v2 checks that
-  // the `proposal` kind passed to act_proposal matches the stored proposal,
-  // so a vote cannot claim to be about registration when it is not.
+  // proposal (and the votes) to register it with Cascade. Votes are checked
+  // against the proposal as stored on the DAO: the deployed Sputnik v2 does
+  // not reject an act_proposal whose `proposal` argument differs from the
+  // stored one (contracts/tests/safety.test.ts proves this), so the argument
+  // cannot be trusted.
   if (d.receiverId.endsWith(`.${cfg.daoFactory}`)) {
     for (const c of d.calls) {
-      const a = c.args as { proposal?: { kind?: unknown } | unknown } | undefined;
+      const a = c.args as { proposal?: { kind?: unknown }; id?: unknown } | undefined;
       if (c.deposit !== 0n) return { ok: false, reason: "DAO calls are relayed only with a zero bond" };
-      if (c.method === "add_proposal" && isRegistrationKind((a?.proposal as { kind?: unknown } | undefined)?.kind, cfg.app)) continue;
-      if (c.method === "act_proposal" && isRegistrationKind(a?.proposal, cfg.app)) continue;
+      if (c.method === "add_proposal" && isRegistrationKind(a?.proposal?.kind, cfg.app)) continue;
+      if (c.method === "act_proposal" && typeof a?.id === "number") {
+        const stored = await cfg.proposalKind(d.receiverId, a.id).catch(() => null);
+        if (isRegistrationKind(stored, cfg.app)) continue;
+      }
       return { ok: false, reason: "this DAO is not registered with Cascade yet; only its registration proposal is relayed" };
     }
     return { ok: true, kind: "dao-onboarding" };
