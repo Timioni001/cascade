@@ -40,6 +40,17 @@ New users get a full-access key generated in their browser, plus a function-call
 - Malicious code in the web app (supply chain, XSS) could use the full key. Mitigations planned for the web app: a strict CSP, no third-party scripts on signing pages, and signing every funding action only after showing the lines.
 - People who already have a NEAR wallet connect it instead (NEAR Connect) and keep their own keys.
 
+## Checkout (merchant API)
+
+- **Custody:** none. A checkout quote's recipient is the merchant's own account or DAO; the customer's refunds go to the customer's own address. Cascade's servers and contract never hold checkout funds.
+- **Onboarding:** a merchant proves control of the receiving account with an NEP-413 signature verified against that account's on-chain keys (or a DAO preparer's keys, for a DAO). Proofs expire after 10 minutes and nonces cannot be reused. This stops someone from creating a merchant that "receives" into an account they do not control, which would let them show a victim's name on a checkout page.
+- **Secret keys:** shown once, stored as SHA-256 hashes. Merchant routes accept only secret keys and have no CORS, so browsers cannot call them.
+- **Session ids** (`cs_` + 18 random base62 chars, ~107 bits) are capabilities for the public checkout page. Knowing one lets you see and pay that session, nothing else.
+- **Webhooks:** `Cascade-Signature: t=..,v1=HMAC-SHA256(secret, t.body)`, 5-minute tolerance, constant-time compare in the SDK. URLs must be https (http only for localhost). Retries with exponential backoff, 8 attempts. A merchant must treat the webhook, not the browser redirect, as proof of payment; the demo shop does exactly that.
+- **Receipts:** each paid session gets an on-chain receipt whose hash binds session id, merchant, amount and reference, written by the settler (same trust as invoices).
+- **Embedding:** the checkout iframe posts messages only to the origin that opened it; the SDK accepts messages only from the Cascade origin, from that iframe, for that session. Everything except `/c/*` sends `X-Frame-Options: DENY`.
+- **Gap:** API rate limits and the NEP-413 nonce set are in-memory (one process).
+
 ## Cross-chain lines
 
 - A line pays a 1Click deposit address fixed at batch creation. If the quote expires, the contract refuses to pay it and the money goes back to the owner.

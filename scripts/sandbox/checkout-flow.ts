@@ -11,7 +11,7 @@ import { formatUsd, type Invoice } from "@cascade/core";
 import { Checkout, ONBOARDING_RECIPIENT, onboardingMessage } from "@cascade/engine";
 import { Cascade, buildEvmTransfer, verifyWebhook, type CheckoutSession, type PaymentPreview, type WebhookEvent } from "@cascade/sdk";
 import type { Narrator } from "./flows.js";
-import type { World } from "./world.js";
+import type { Person, World } from "./world.js";
 
 const ETH_BASE = "nep141:base.omft.near";
 
@@ -26,6 +26,27 @@ export interface CheckoutResult {
   merchantUsdcDelta: bigint;
   evmCalldata: string;
   cascadeHeldAnything: boolean;
+}
+
+/**
+ * Onboard `who` as a merchant: sign the NEP-413 onboarding message with their
+ * own key and POST it to the API, which checks it against the chain.
+ */
+export async function onboardMerchant(w: World, who: Person, name: string, webhookUrl: string | null): Promise<{ secretKey: string; webhookSecret: string }> {
+  const issuedAt = new Date().toISOString();
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  const signed = await who.full.signNep413Message({ message: onboardingMessage({ account: who.id, name, issuedAt }), recipient: ONBOARDING_RECIPIENT, nonce });
+  const r = await fetch(`${w.apiUrl}/v1/merchants`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      account: who.id, name, webhookUrl,
+      proof: { signer: who.id, publicKey: signed.publicKey.toString(), signature: Buffer.from(signed.signature).toString("base64"), nonce: Buffer.from(nonce).toString("base64"), issuedAt },
+    }),
+  });
+  const j = (await r.json()) as { secretKey: string; webhookSecret: string; error?: { message: string } };
+  if (r.status !== 201) throw new Error(`onboarding failed: ${j.error?.message}`);
+  return j;
 }
 
 /** A tiny merchant backend: verifies Cascade webhooks with the public SDK and remembers what it accepted. */
@@ -60,22 +81,7 @@ export async function checkoutFlow(w: World, n: Narrator): Promise<CheckoutResul
   await new Promise<void>((r) => m.server.listen(0, "127.0.0.1", () => r()));
   const hookUrl = `http://127.0.0.1:${(m.server.address() as AddressInfo).port}/cascade-webhook`;
 
-  // Onboarding: sign an NEP-413 message with the account's own key. The API
-  // verifies it against the key registered on-chain.
-  const issuedAt = new Date().toISOString();
-  const name = "Lagos Prints";
-  const nonce = crypto.getRandomValues(new Uint8Array(32));
-  const signed = await shop.full.signNep413Message({ message: onboardingMessage({ account: shop.id, name, issuedAt }), recipient: ONBOARDING_RECIPIENT, nonce });
-  const r = await fetch(`${w.apiUrl}/v1/merchants`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      account: shop.id, name, webhookUrl: hookUrl,
-      proof: { signer: shop.id, publicKey: signed.publicKey.toString(), signature: Buffer.from(signed.signature).toString("base64"), nonce: Buffer.from(nonce).toString("base64"), issuedAt },
-    }),
-  });
-  const onboarded = (await r.json()) as { secretKey: string; webhookSecret: string; error?: { message: string } };
-  if (r.status !== 201) throw new Error(`onboarding failed: ${onboarded.error?.message}`);
+  const onboarded = await onboardMerchant(w, shop, "Lagos Prints", hookUrl);
   webhookSecret = onboarded.webhookSecret;
   n.ok(`Onboarded with a signed NEP-413 message (checked against ${shop.id}'s on-chain key). Secret key ${onboarded.secretKey.slice(0, 12)}…`);
 

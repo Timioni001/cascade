@@ -78,7 +78,7 @@ function wasm(name: string): Uint8Array {
   return readFileSync(join(RES, name));
 }
 
-export async function createWorld(opts: { log?: (s: string) => void } = {}): Promise<World> {
+export async function createWorld(opts: { log?: (s: string) => void; apiPort?: number; publicUrl?: string } = {}): Promise<World> {
   const log = opts.log ?? (() => {});
   const sandbox = await startSandbox();
   const chain = new Chain(sandbox.rpcUrl, "sandbox");
@@ -137,9 +137,9 @@ export async function createWorld(opts: { log?: (s: string) => void } = {}): Pro
     limits: { namesPerIp: { max: 100, windowMs: 86_400_000 } },
   });
   const sink: RelaySink = { relay: (b64) => relayer.relay(b64, { ip: "127.0.0.1" }) };
-  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: "http://localhost:3000" });
+  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000" });
   const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout) });
-  const server = serve({ fetch: apiApp({ checkout, dev: { oneclick } }).fetch, port: 0, hostname: "127.0.0.1" });
+  const server = serve({ fetch: apiApp({ checkout, dev: { oneclick } }).fetch, port: opts.apiPort ?? 0, hostname: "127.0.0.1" });
   await new Promise<void>((r) => (server.listening ? r() : server.once("listening", () => r())));
   const apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 

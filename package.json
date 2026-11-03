@@ -18,7 +18,9 @@
     "build:contracts": "bash scripts/build-contracts.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "relayer": "pnpm --filter @cascade/relayer start",
-    "settler": "pnpm --filter @cascade/settler start"
+    "settler": "pnpm --filter @cascade/settler start",
+    "dev": "tsx scripts/dev-sandbox.ts",
+    "test:e2e": "node scripts/e2e/checkout.e2e.cjs"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

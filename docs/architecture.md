@@ -40,16 +40,29 @@ packages/
   sputnik/      Payroll policy, register/fund proposals, funding-proposal verifier.
   near/         `Call` builders, Chain wrapper, NEP-366 sign/decode.
   db/           Store interface (memory, node:sqlite), accountant CSV.
-  engine/       Use cases (invoice, quote for payer, batch, fund, propose) behind an Executor.
+  engine/       Use cases (invoice, quote for payer, batch, fund, propose) behind an Executor; checkout.ts: merchants, sessions, webhooks.
+  sdk/          Public, dependency-free: server client, webhook verify, Pay button/modal, EVM payments.
 services/
   relayer/      Pays gas for allowed calls (NEP-366) and creates names. Policy + rate limits.
-  settler/      Crank: records 1Click deliveries, executes batches, refunds failures, tracks cross-chain lines.
+  settler/      Crank: records 1Click deliveries, executes batches, refunds failures, tracks cross-chain lines; hooks for checkout.
+  api/          Checkout API (Hono): /v1/merchants, /v1/checkout/sessions, /v1/public/*.
+apps/
+  web/          Next.js 15: hosted checkout /c/[id] (also the iframe target) and a demo shop /shop.
 scripts/
   sandbox/      Local node, deployment ("world") and the two stories ("flows").
   demo-sandbox.ts   pnpm demo
 ```
 
-Planned, not built yet: `apps/web` (Next.js: payment link, invoice page, dashboards, embed), `packages/sdk` (createPayLink, PayButton), `services/bookkeeper` (NEAR AI Cloud drafts), `scripts/demo-mainnet.ts`.
+Planned, not built yet: dashboards (invoices, batches, approvals), Solana/NEAR wallet buttons in checkout, `scripts/demo-mainnet.ts`. Cut: the AI assistant.
+
+## Checkout flow
+
+```
+merchant server ──sk_ key──▶ POST /v1/checkout/sessions ──▶ session (cs_…, url)
+customer ──▶ /c/cs_… (modal iframe via @cascade/sdk) ──▶ preview (dry quote) ──▶ pay (real quote, recipient = merchant)
+customer wallet ──any coin, any chain──▶ 1Click deposit address ──NEAR Intents──▶ USDC to merchant (account or DAO)
+settler ──/v0/status SUCCESS──▶ record_link_payment(receipt hash = session) ──▶ signed webhook to merchant server
+```
 
 ## Design decisions
 
