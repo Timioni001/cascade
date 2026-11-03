@@ -28,6 +28,8 @@ export interface QuoteRequest {
   quoteWaitingTimeMs?: number;
   appFees?: { recipient: string; fee: number }[];
   sessionId?: string;
+  /** HIGHLY EXPERIMENTAL in 1Click: deliver to NEAR with ft_transfer_call and this msg. */
+  customRecipientMsg?: string;
 }
 
 export interface Quote {

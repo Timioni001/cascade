@@ -29,6 +29,8 @@ export interface SettlerHooks {
   recorded?(rec: PaymentRecord, receiptId: number | null, tx: string): Promise<void>;
   /** 1Click refunded an incoming payment to the payer. */
   refunded?(rec: PaymentRecord): Promise<void>;
+  /** An outgoing (batch line) payment reached a terminal 1Click status. */
+  outgoing?(rec: PaymentRecord): Promise<void>;
   /** Runs at the end of every tick (session expiry, webhook delivery...). */
   afterTick?(): Promise<void>;
 }
@@ -163,7 +165,8 @@ export class Settler {
       const line = byBatch.get(p.batchId)![p.lineIdx];
       // Only ask 1Click once the contract has actually paid the deposit address.
       if (line?.status !== "Sent") continue;
-      await this.refresh(p);
+      const { rec } = await this.refresh(p);
+      if (isTerminal(rec.status) && !isTerminal(p.status)) await this.o.hooks?.outgoing?.(rec);
     }
   }
 

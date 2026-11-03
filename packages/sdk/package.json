@@ -11,7 +11,9 @@
     "./server": "./src/server.ts",
     "./browser": "./src/browser.ts",
     "./evm": "./src/evm.ts",
-    "./webhooks": "./src/webhooks.ts"
+    "./webhooks": "./src/webhooks.ts",
+    "./x402": "./src/x402.ts",
+    "./uris": "./src/uris.ts"
   },
   "sideEffects": false
 }

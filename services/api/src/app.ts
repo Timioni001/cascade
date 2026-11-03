@@ -1,11 +1,15 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { RateLimiter, HOUR } from "@cascade/core";
-import { CheckoutError, type Checkout, type OnboardingProof } from "@cascade/engine";
+import { AgentPayments, CheckoutError, Refunds, type Checkout, type OnboardingProof } from "@cascade/engine";
+import { ledgerRows, toCsv } from "@cascade/db";
+import type { X402PaymentPayload } from "@cascade/sdk";
 import type { MockOneClick } from "@cascade/oneclick";
 
 export interface ApiOptions {
   checkout: Checkout;
+  refunds?: Refunds;
+  agents?: AgentPayments;
   trustProxy?: boolean;
   /** Sandbox only: enables POST /v1/dev/... routes that fake a payer's deposit. */
   dev?: { oneclick: MockOneClick };
@@ -22,6 +26,8 @@ type Json = Record<string, unknown>;
 export function apiApp(o: ApiOptions) {
   const app = new Hono();
   const c = o.checkout;
+  const refunds = o.refunds ?? new Refunds(c);
+  const agents = o.agents ?? new AgentPayments(c);
   const limiter = o.limiter ?? new RateLimiter();
   const ip = (ctx: Context) => (o.trustProxy ? ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined) ?? ctx.req.header("x-real-ip") ?? "local";
   const body = async (ctx: Context): Promise<Json> => {
@@ -73,6 +79,11 @@ export function apiApp(o: ApiOptions) {
   };
   merchant.use("/merchant", auth);
   merchant.use("/checkout/*", auth);
+  merchant.use("/refunds/*", auth);
+  merchant.use("/x402/*", auth);
+  merchant.use("/webhooks", auth);
+  merchant.use("/webhooks/*", auth);
+  merchant.use("/reports/*", auth);
   const me = (ctx: Context) => ctx.get("merchant" as never) as unknown as Awaited<ReturnType<Checkout["authenticate"]>>;
 
   merchant.get("/merchant", (ctx) => {
@@ -101,6 +112,7 @@ export function apiApp(o: ApiOptions) {
         ...(b.successUrl !== undefined ? { successUrl: str(b.successUrl, "successUrl")! } : {}),
         ...(b.cancelUrl !== undefined ? { cancelUrl: str(b.cancelUrl, "cancelUrl")! } : {}),
         ...(typeof b.expiresInMinutes === "number" ? { expiresInMinutes: b.expiresInMinutes } : {}),
+        ...(b.splitId !== undefined ? { splitId: Number(b.splitId) } : {}),
       },
       ctx.req.header("idempotency-key") ?? undefined,
     );
@@ -116,6 +128,55 @@ export function apiApp(o: ApiOptions) {
     if (s.merchantId !== me(ctx).id) throw new CheckoutError(404, "no such checkout session");
     return ctx.json(await c.view(s));
   });
+
+  // Refunds: prepare -> merchant signs create_batch -> confirm -> merchant signs funding.
+  merchant.post("/checkout/sessions/:id/refunds", async (ctx) => {
+    const b = await body(ctx).catch(() => ({}) as Json);
+    const r = await refunds.prepare(me(ctx), ctx.req.param("id"), str(b.amount, "amount", false));
+    return ctx.json(await refunds.view(r), 201);
+  });
+  merchant.post("/refunds/:id/confirm", async (ctx) => {
+    const b = await body(ctx);
+    if (typeof b.batchId !== "number") throw new CheckoutError(400, "batchId (number) is required");
+    return ctx.json(await refunds.view(await refunds.confirm(me(ctx), ctx.req.param("id"), b.batchId)));
+  });
+  merchant.get("/refunds/:id", async (ctx) => ctx.json(await refunds.view(await refunds.get(me(ctx), ctx.req.param("id")))));
+
+  // x402 facilitator (called by the merchant's server through @cascade/sdk x402Guard).
+  merchant.post("/x402/prepare", async (ctx) => {
+    const b = await body(ctx);
+    return ctx.json(
+      await agents.prepare(me(ctx), {
+        amount: str(b.amount, "amount")!, description: str(b.description, "description")!, resource: str(b.resource, "resource")!, url: str(b.url, "url")!,
+        ...(b.mimeType !== undefined ? { mimeType: str(b.mimeType, "mimeType")! } : {}),
+        ...(Array.isArray(b.assets) ? { assets: b.assets.map((a) => String(a)) } : {}),
+        ...(b.refundTo !== undefined ? { refundTo: str(b.refundTo, "refundTo")! } : {}),
+      }),
+    );
+  });
+  merchant.post("/x402/settle", async (ctx) => {
+    const b = await body(ctx);
+    return ctx.json(await agents.settle(me(ctx), { payload: b.payload as X402PaymentPayload, resource: str(b.resource, "resource")! }));
+  });
+
+  // Operations: webhook log and retries, accountant CSV.
+  merchant.get("/webhooks", async (ctx) => {
+    const list = await c.cfg.store.listWebhooks(me(ctx).id);
+    return ctx.json({ data: list.map(({ body: _b, ...w }) => w).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+  });
+  merchant.post("/webhooks/:id/retry", async (ctx) => {
+    const w = await c.cfg.store.getWebhook(ctx.req.param("id"));
+    if (!w || w.merchantId !== me(ctx).id) throw new CheckoutError(404, "no such webhook");
+    await c.cfg.store.putWebhook({ ...w, status: "pending", nextAttemptAt: new Date(0).toISOString() });
+    return ctx.json({ ok: true });
+  });
+  merchant.get("/reports/ledger.csv", async (ctx) => {
+    const month = ctx.req.query("month");
+    if (month && !/^\d{4}-\d{2}$/.test(month)) throw new CheckoutError(400, "month must be YYYY-MM");
+    const rows = await ledgerRows(c.cfg.store, me(ctx).account, { ...(month ? { month } : {}), chain: { batch: (id) => c.reader.batch(id), lines: (id) => c.reader.lines(id) } });
+    return new Response(toCsv(rows), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="cascade-${month ?? "all"}.csv"` } });
+  });
+
   app.route("/v1", merchant);
 
   // ------------------------------------------------------------ public (checkout page)
@@ -135,6 +196,7 @@ export function apiApp(o: ApiOptions) {
     const b = await body(ctx);
     return ctx.json(await c.startPayment(ctx.req.param("id"), { assetId: str(b.assetId, "assetId")!, refundTo: str(b.refundTo, "refundTo")! }));
   });
+  pub.get("/sessions/:id/receipt", async (ctx) => ctx.json(await c.receipt(ctx.req.param("id"))));
   pub.post("/sessions/:id/deposit", async (ctx) => {
     const b = await body(ctx);
     return ctx.json(await c.submitDeposit(ctx.req.param("id"), str(b.txHash, "txHash")!));
@@ -147,6 +209,11 @@ export function apiApp(o: ApiOptions) {
       if (!dep) throw new CheckoutError(400, "start a payment first");
       await mock.simulatePayerDeposit(dep);
       return ctx.json(await c.view(s));
+    });
+    // Agents in the sandbox pay a deposit address directly (x402).
+    pub.post("/dev/deposits/:address/simulate", async (ctx) => {
+      const r = await mock.simulatePayerDeposit(ctx.req.param("address"));
+      return ctx.json({ status: r.status, txHash: r.swapDetails.originChainTxHashes[0]?.hash ?? null });
     });
   }
   app.route("/v1/public", pub);

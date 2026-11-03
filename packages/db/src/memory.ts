@@ -1,6 +1,6 @@
 import {
   matches, type ApiKey, type BatchDoc, type CheckoutSessionRecord, type InvoiceDoc, type Merchant, type PaymentFilter, type PaymentRecord, type Store,
-  type WebhookDelivery,
+  type RefundRecord, type WebhookDelivery,
 } from "./records.js";
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -13,6 +13,7 @@ export class MemoryStore implements Store {
   private keys = new Map<string, ApiKey>();
   private sessions = new Map<string, CheckoutSessionRecord>();
   private hooks = new Map<string, WebhookDelivery>();
+  private refunds = new Map<string, RefundRecord>();
 
   async putInvoice(doc: InvoiceDoc) {
     this.invoices.set(doc.id, clone(doc));
@@ -79,6 +80,27 @@ export class MemoryStore implements Store {
   async findSessionByIdempotencyKey(merchantId: string, key: string) {
     const s = [...this.sessions.values()].find((x) => x.merchantId === merchantId && x.idempotencyKey === key);
     return s ? clone(s) : null;
+  }
+  async putRefund(r: RefundRecord) {
+    this.refunds.set(r.id, clone(r));
+  }
+  async getRefund(id: string) {
+    const r = this.refunds.get(id);
+    return r ? clone(r) : null;
+  }
+  async listRefunds(sessionId: string) {
+    return [...this.refunds.values()].filter((r) => r.sessionId === sessionId).map(clone);
+  }
+  async listOpenRefunds() {
+    return [...this.refunds.values()].filter((r) => r.status !== "succeeded" && r.status !== "failed").map(clone);
+  }
+  async findRefundByDeposit(dep: string) {
+    const r = [...this.refunds.values()].find((x) => x.depositAddress === dep);
+    return r ? clone(r) : null;
+  }
+  async getWebhook(id: string) {
+    const w = this.hooks.get(id);
+    return w ? clone(w) : null;
   }
   async putWebhook(w: WebhookDelivery) {
     this.hooks.set(w.id, clone(w));

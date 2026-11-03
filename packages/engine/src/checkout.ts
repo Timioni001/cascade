@@ -75,6 +75,11 @@ export interface CheckoutConfig {
   now?: () => number;
   /** Verify a NEP-413 proof. Defaults to near-api-js verifyMessage against the chain. */
   verifyProof?: (p: OnboardingProof, message: string) => Promise<boolean>;
+  /**
+   * Cascade's fee: a 1Click app fee paid by the customer on top of the exact
+   * amount the merchant receives. `recipient` is an account inside NEAR Intents.
+   */
+  fee?: { recipient: string; bps: number };
 }
 
 export interface NewSession {
@@ -85,10 +90,15 @@ export interface NewSession {
   successUrl?: string;
   cancelUrl?: string;
   expiresInMinutes?: number;
+  /** On-chain revenue split (create_split) that receives the payment instead of the merchant account. */
+  splitId?: number;
 }
 
+/** How a quote's refunds are routed: to the payer on their chain, or (x402 without an address) into the merchant's Intents account. */
+export type RefundRoute = { refundTo: string; type: "ORIGIN_CHAIN" | "INTENTS" };
+
 export class Checkout {
-  private readonly reader: CascadeReader;
+  readonly reader: CascadeReader;
   private readonly now: () => number;
   private readonly usedNonces = new Set<string>();
   private assetsCache: { at: number; assets: PayAsset[] } | null = null;
@@ -201,6 +211,11 @@ export class Checkout {
       throw new CheckoutError(400, "metadata: up to 20 string keys of 40 chars and values of 500 chars");
     }
     for (const u of [p.successUrl, p.cancelUrl]) if (u && !/^https?:\/\//.test(u)) throw new CheckoutError(400, "redirect URLs must be http(s)");
+    if (p.splitId !== undefined) {
+      const split = Number.isInteger(p.splitId) && p.splitId >= 0 ? await this.reader.split(p.splitId) : null;
+      if (!split) throw new CheckoutError(400, "no such split");
+      if (split.owner !== m.account) throw new CheckoutError(403, "that split belongs to another owner");
+    }
     const minutes = Math.min(Math.max(p.expiresInMinutes ?? 60, 5), 1440);
     const s: CheckoutSessionRecord = {
       id: randomId("cs_"),
@@ -220,6 +235,7 @@ export class Checkout {
       createdAt: this.iso(),
       expiresAt: this.iso(this.now() + minutes * 60_000),
       paidAt: null,
+      splitId: p.splitId ?? null,
     };
     await this.cfg.store.putSession(s);
     return s;
@@ -264,13 +280,45 @@ export class Checkout {
             }
           : null,
       receipt: s.receiptId !== null ? { id: s.receiptId, nearTx: s.nearTx, contract: this.cfg.app } : null,
+      split: s.splitId !== null && s.splitId !== undefined ? { id: s.splitId, shares: (await this.splitShares(s.splitId)) ?? [] } : null,
+      feeBps: this.cfg.fee?.bps ?? 0,
       createdAt: s.createdAt,
       expiresAt: s.expiresAt,
       paidAt: s.paidAt,
     };
   }
 
+  private splitCache = new Map<number, { account: string; bps: number }[]>();
+  private async splitShares(id: number) {
+    if (!this.splitCache.has(id)) {
+      const r = await this.reader.split(id);
+      if (r) this.splitCache.set(id, r.shares); // splits are immutable
+    }
+    return this.splitCache.get(id) ?? null;
+  }
+
   // ------------------------------------------------------------ paying
+
+  /**
+   * The one place a checkout quote is built. Recipient is the merchant, or the
+   * Cascade contract with msg {"split": id} for a split session; the merchant
+   * always receives exactly `amount` (EXACT_OUTPUT); any Cascade fee is added
+   * on top for the payer.
+   */
+  quoteFor(s: CheckoutSessionRecord, a: PayAsset, refund: RefundRoute, dry: boolean) {
+    const split = s.splitId !== null && s.splitId !== undefined;
+    return incomingQuote({
+      payAsset: a.assetId,
+      owner: split ? this.cfg.app : s.owner,
+      amountOut: BigInt(s.amount),
+      refundTo: refund.refundTo,
+      refundType: refund.type,
+      dry,
+      now: this.now(),
+      ...(split ? { recipientMsg: JSON.stringify({ split: s.splitId }) } : {}),
+      ...(this.cfg.fee ? { appFee: this.cfg.fee } : {}),
+    });
+  }
 
   async assets(): Promise<PayAsset[]> {
     if (this.assetsCache && this.now() - this.assetsCache.at < 60_000) return this.assetsCache.assets;
@@ -289,13 +337,13 @@ export class Checkout {
     return assets;
   }
 
-  private async asset(assetId: string): Promise<PayAsset> {
+  async asset(assetId: string): Promise<PayAsset> {
     const a = (await this.assets()).find((x) => x.assetId === assetId);
     if (!a) throw new CheckoutError(400, "unsupported payment asset");
     return a;
   }
 
-  private assertPayable(s: CheckoutSessionRecord) {
+  assertPayable(s: CheckoutSessionRecord) {
     if (s.status === "paid") throw new CheckoutError(409, "this session is already paid");
     if (s.status === "expired" || Date.parse(s.expiresAt) <= this.now()) throw new CheckoutError(410, "this session has expired");
   }
@@ -305,22 +353,24 @@ export class Checkout {
     const s = await this.getSession(id);
     this.assertPayable(s);
     const a = await this.asset(assetId);
-    const q = await this.cfg.oneclick.quote(
-      incomingQuote({ payAsset: a.assetId, owner: s.owner, amountOut: BigInt(s.amount), refundTo: previewRefund(a.chain), dry: true, now: this.now() }),
-    );
+    const q = await this.cfg.oneclick.quote(this.quoteFor(s, a, { refundTo: previewRefund(a.chain), type: "ORIGIN_CHAIN" }, true));
     return { asset: a, amountIn: q.quote.amountIn, amountInFormatted: q.quote.amountInFormatted, amountInUsd: q.quote.amountInUsd, amountOut: q.quote.amountOut, timeEstimateSeconds: q.quote.timeEstimate };
   }
 
   /** The payer confirmed: reserve a one-time deposit address. Refunds (if any) go to `refundTo`, the payer's own address. */
   async startPayment(id: string, p: { assetId: string; refundTo: string }): Promise<CheckoutSession> {
-    const s = await this.getSession(id);
-    this.assertPayable(s);
-    if (s.attempts.length >= MAX_ATTEMPTS) throw new CheckoutError(429, "too many payment attempts for this session");
     if (!p.refundTo || p.refundTo.length > 128) throw new CheckoutError(400, "refundTo (your own address on the paying chain) is required");
-    const a = await this.asset(p.assetId);
-    const q = await this.cfg.oneclick.quote(
-      incomingQuote({ payAsset: a.assetId, owner: s.owner, amountOut: BigInt(s.amount), refundTo: p.refundTo, dry: false, now: this.now() }),
-    );
+    const s = await this.getSession(id);
+    await this.reserve(s, await this.asset(p.assetId), { refundTo: p.refundTo, type: "ORIGIN_CHAIN" });
+    return this.view(await this.getSession(id));
+  }
+
+  /** Reserve a deposit address for one payment attempt and start tracking it. */
+  async reserve(s: CheckoutSessionRecord, a: PayAsset, refund: RefundRoute): Promise<PaymentRecord> {
+    this.assertPayable(s);
+    const fresh = await this.getSession(s.id);
+    if (fresh.attempts.length >= MAX_ATTEMPTS) throw new CheckoutError(429, "too many payment attempts for this session");
+    const q = await this.cfg.oneclick.quote(this.quoteFor(fresh, a, refund, false));
     const dep = q.quote.depositAddress;
     if (!dep) throw new CheckoutError(502, "1Click returned no deposit address");
     const rec: PaymentRecord = {
@@ -330,9 +380,49 @@ export class Checkout {
       createdAt: this.iso(), updatedAt: this.iso(),
     };
     await this.cfg.store.putPayment(rec);
-    const next = { ...s, attempts: [...s.attempts, dep] };
-    await this.cfg.store.putSession(next);
-    return this.view(next);
+    const latest = await this.getSession(s.id);
+    await this.cfg.store.putSession({ ...latest, attempts: [...latest.attempts, dep] });
+    return rec;
+  }
+
+  /** The attempt that delivered the money, once the session is paid. */
+  async paidAttempt(s: CheckoutSessionRecord): Promise<PaymentRecord | null> {
+    for (const dep of [...s.attempts].reverse()) {
+      const rec = await this.cfg.store.getPayment(dep);
+      if (rec?.status === "SUCCESS") return rec;
+    }
+    return null;
+  }
+
+  /**
+   * Everything needed to check a receipt without trusting Cascade: the
+   * on-chain record, the hash that binds it to this session, and 1Click's
+   * delivery details.
+   */
+  async receipt(id: string) {
+    const s = await this.getSession(id);
+    if (s.status !== "paid" || s.receiptId === null) throw new CheckoutError(404, "this session has no receipt yet");
+    const onchain = await this.reader.invoice(s.receiptId);
+    const expectedHash = Checkout.receiptHash(s);
+    const rec = await this.paidAttempt(s);
+    const d = rec?.quote;
+    return {
+      session: await this.view(s),
+      contract: this.cfg.app,
+      onchain,
+      expectedHash,
+      hashMatches: onchain?.metadata_hash === expectedHash,
+      depositMatches: onchain?.settlement?.deposit_address === rec?.depositAddress,
+      delivery: rec
+        ? {
+            status: rec.status,
+            paidWith: d ? { asset: d.quoteRequest.originAsset, chain: rec.originChain, amount: d.quote.amountInFormatted } : null,
+            depositAddress: rec.depositAddress,
+            nearTx: rec.nearTx,
+            quoteSignature: d?.signature ?? null,
+          }
+        : null,
+    };
   }
 
   /** The payer's wallet returned a tx hash: tell 1Click to look for it now. */
@@ -390,14 +480,15 @@ export class Checkout {
 
   // ------------------------------------------------------------ webhooks
 
-  private async enqueue(s: CheckoutSessionRecord, type: WebhookEventType, refundReason?: string) {
+  /** Queue a signed webhook for the session's merchant (no-op if they have no webhook URL). */
+  async enqueue(s: CheckoutSessionRecord, type: WebhookEventType, refundReason?: string, refund?: { id: string; amount: string; destTx: string | null }) {
     const m = await this.cfg.store.getMerchant(s.merchantId);
     if (!m?.webhookUrl) return;
     const event: WebhookEvent = {
       id: randomId("evt_"),
       type,
       created: this.iso(),
-      data: { session: await this.view(s), ...(refundReason ? { refundReason } : {}) },
+      data: { session: await this.view(s), ...(refundReason ? { refundReason } : {}), ...(refund ? { refund } : {}) },
     };
     const d: WebhookDelivery = {
       id: event.id, merchantId: m.id, type, body: JSON.stringify(event), attempts: 0,
@@ -459,17 +550,21 @@ export function validateWebhookUrl(u: string): void {
   if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) throw new CheckoutError(400, "webhookUrl must be https");
 }
 
-/** Plug checkout into the settler (services/settler SettlerHooks). */
-export function checkoutHooks(c: Checkout, f: typeof fetch = fetch) {
+/** Plug checkout (and refunds) into the settler (services/settler SettlerHooks). */
+export function checkoutHooks(c: Checkout, f: typeof fetch = fetch, refunds?: { onOutgoing(rec: PaymentRecord): Promise<void>; refreshFunding(): Promise<void> }) {
   return {
     receiptHash: async (rec: PaymentRecord) => {
-      if (!rec.sessionId) return null;
+      if (!rec.sessionId || rec.direction !== "in") return null;
       const s = await c.cfg.store.getSession(rec.sessionId);
       return s ? Checkout.receiptHash(s) : null;
     },
     recorded: (rec: PaymentRecord, receiptId: number | null, tx: string) => c.onRecorded(rec, receiptId, tx),
     refunded: (rec: PaymentRecord) => c.onRefunded(rec),
+    outgoing: async (rec: PaymentRecord) => {
+      await refunds?.onOutgoing(rec);
+    },
     afterTick: async () => {
+      await refunds?.refreshFunding();
       await c.expireSessions();
       await c.deliverWebhooks(f);
     },

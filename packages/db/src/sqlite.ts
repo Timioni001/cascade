@@ -1,6 +1,6 @@
 import {
   matches, type ApiKey, type BatchDoc, type CheckoutSessionRecord, type InvoiceDoc, type Merchant, type PaymentFilter, type PaymentRecord, type Store,
-  type WebhookDelivery,
+  type RefundRecord, type WebhookDelivery,
 } from "./records.js";
 
 /**
@@ -29,6 +29,7 @@ export class SqliteStore implements Store {
       CREATE UNIQUE INDEX IF NOT EXISTS sessions_idem ON sessions(merchant_id, idem) WHERE idem IS NOT NULL;
       CREATE TABLE IF NOT EXISTS webhooks (id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL, status TEXT NOT NULL, next_at TEXT NOT NULL, doc TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS webhooks_due ON webhooks(status, next_at);
+      CREATE TABLE IF NOT EXISTS refunds (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, deposit_address TEXT NOT NULL UNIQUE, doc TEXT NOT NULL);
     `);
   }
 
@@ -112,6 +113,24 @@ export class SqliteStore implements Store {
   }
   async findSessionByIdempotencyKey(merchantId: string, key: string) {
     return this.one<CheckoutSessionRecord>("SELECT doc FROM sessions WHERE merchant_id = ? AND idem = ?", merchantId, key);
+  }
+  async putRefund(r: RefundRecord) {
+    this.db.prepare("INSERT OR REPLACE INTO refunds (id, session_id, deposit_address, doc) VALUES (?, ?, ?, ?)").run(r.id, r.sessionId, r.depositAddress, JSON.stringify(r));
+  }
+  async getRefund(id: string) {
+    return this.one<RefundRecord>("SELECT doc FROM refunds WHERE id = ?", id);
+  }
+  async listRefunds(sessionId: string) {
+    return this.many<RefundRecord>("SELECT doc FROM refunds WHERE session_id = ? ORDER BY id", sessionId);
+  }
+  async listOpenRefunds() {
+    return this.many<RefundRecord>("SELECT doc FROM refunds ORDER BY id").filter((r) => r.status !== "succeeded" && r.status !== "failed");
+  }
+  async findRefundByDeposit(dep: string) {
+    return this.one<RefundRecord>("SELECT doc FROM refunds WHERE deposit_address = ?", dep);
+  }
+  async getWebhook(id: string) {
+    return this.one<WebhookDelivery>("SELECT doc FROM webhooks WHERE id = ?", id);
   }
   async putWebhook(w: WebhookDelivery) {
     this.db

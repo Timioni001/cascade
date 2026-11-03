@@ -6,6 +6,21 @@
  *   redirect(session.url);
  */
 import type { CheckoutSession, CreateSessionParams } from "./types.js";
+import type { X402PaymentPayload, X402PaymentRequired, X402Settlement } from "./x402.js";
+
+export interface RefundInfo {
+  id: string; // rf_...
+  sessionId: string;
+  amount: string;
+  status: "awaiting_batch" | "awaiting_funding" | "funded" | "succeeded" | "failed";
+  /** The single payout line the merchant's batch must contain (hash-locked). */
+  lines: { recipient: string; amount: string; kind: "CrossChain"; dest: string; deadline_ms: number }[];
+  hash: string;
+  /** NEAR calls the merchant signs, in order (any NEAR wallet or key). */
+  calls: { receiverId: string; methodName: string; args: Record<string, unknown>; deposit: string; gas: string }[];
+  batchId: number | null;
+  destTx: string | null;
+}
 
 export const DEFAULT_API_URL = "https://api.cascade.link";
 
@@ -61,6 +76,30 @@ export class Cascade {
       this.req<CheckoutSession>("POST", "/v1/checkout/sessions", { ...p, amount: toUnits(p.amount) }, opts.idempotencyKey),
     retrieve: (id: string) => this.req<CheckoutSession>("GET", `/v1/checkout/sessions/${encodeURIComponent(id)}`),
     list: (opts: { limit?: number } = {}) => this.req<{ data: CheckoutSession[] }>("GET", `/v1/checkout/sessions?limit=${opts.limit ?? 20}`),
+  };
+
+  readonly refunds = {
+    /** Prepare a refund to the customer, on the chain and in the coin they paid with. Default: the full amount. */
+    create: (sessionId: string, p: { amount?: string | bigint } = {}) =>
+      this.req<RefundInfo>("POST", `/v1/checkout/sessions/${encodeURIComponent(sessionId)}/refunds`, p.amount !== undefined ? { amount: toUnits(p.amount) } : {}),
+    /** After signing `calls`: tell Cascade which batch funds the refund. It checks the batch on-chain. */
+    confirm: (refundId: string, batchId: number) => this.req<RefundInfo>("POST", `/v1/refunds/${encodeURIComponent(refundId)}/confirm`, { batchId }),
+    retrieve: (refundId: string) => this.req<RefundInfo>("GET", `/v1/refunds/${encodeURIComponent(refundId)}`),
+  };
+
+  readonly x402 = {
+    prepare: (p: { price: string; description: string; resource: string; url: string; mimeType?: string; assets?: string[]; refundTo?: string }) =>
+      this.req<X402PaymentRequired>("POST", "/v1/x402/prepare", { ...p, amount: toUnits(p.price) }),
+    settle: (p: { payload: X402PaymentPayload; resource: string }) => this.req<X402Settlement>("POST", "/v1/x402/settle", p),
+  };
+
+  readonly reports = {
+    /** Accountant CSV for a month ("2026-11") or everything. */
+    ledgerCsv: async (month?: string) => {
+      const r = await this.f(`${this.base}/v1/reports/ledger.csv${month ? `?month=${encodeURIComponent(month)}` : ""}`, { headers: { authorization: `Bearer ${this.opts.apiKey}` } });
+      if (!r.ok) throw new CascadeApiError(r.status, r.statusText);
+      return r.text();
+    },
   };
 
   readonly merchant = {

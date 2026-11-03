@@ -21,15 +21,18 @@ import type {
  * once `usdcBalance(depositAddress)` shows the deposit arrived.
  */
 export interface MockDriver {
-  deliverUsdc(recipient: string, amount: bigint): Promise<string>;
+  /** Deliver USDC on NEAR. With `msg`, deliver via ft_transfer_call (1Click's customRecipientMsg). */
+  deliverUsdc(recipient: string, amount: bigint, msg?: string): Promise<string>;
   usdcBalance(account: string): Promise<bigint>;
 }
 
 /** In-memory driver: a ledger of USDC balances with fake tx hashes. */
 export class MemoryDriver implements MockDriver {
   readonly balances = new Map<string, bigint>();
+  readonly messages: { recipient: string; amount: bigint; msg: string }[] = [];
   private n = 0;
-  async deliverUsdc(recipient: string, amount: bigint) {
+  async deliverUsdc(recipient: string, amount: bigint, msg?: string) {
+    if (msg !== undefined) this.messages.push({ recipient, amount, msg });
     this.balances.set(recipient, (this.balances.get(recipient) ?? 0n) + amount);
     return fakeHash(`deliver:${recipient}:${amount}:${this.n++}`);
   }
@@ -144,7 +147,8 @@ export class MockOneClick implements OneClick {
     }
     const tin = this.token(req.originAsset);
     const tout = this.token(req.destinationAsset);
-    const fee = SPREAD_BPS + (this.authenticated ? 0n : UNAUTH_FEE_BPS);
+    const appFeeBps = BigInt((req.appFees ?? []).reduce((t, f) => t + f.fee, 0));
+    const fee = SPREAD_BPS + appFeeBps + (this.authenticated ? 0n : UNAUTH_FEE_BPS);
     const slip = BigInt(req.slippageTolerance ?? 100);
     const amount = BigInt(req.amount);
 
@@ -169,7 +173,7 @@ export class MockOneClick implements OneClick {
       signature: `ed25519:mock${fakeHash(`${this.seed}:sig:${this.n}`).slice(0, 40)}`,
       quoteRequest: {
         ...req,
-        ...(this.authenticated ? {} : { appFees: [{ recipient: "1click-fee.near", fee: Number(UNAUTH_FEE_BPS) }] }),
+        ...(this.authenticated ? {} : { appFees: [...(req.appFees ?? []), { recipient: "1click-fee.near", fee: Number(UNAUTH_FEE_BPS) }] }),
       },
       quote: {
         amountIn: amountIn.toString(),
@@ -279,7 +283,7 @@ export class MockOneClick implements OneClick {
     }
     this.set(r, "PROCESSING", { depositedAmount: amount.toString(), originChainTxHashes: [originTx] });
     const out = BigInt(q.amountOut);
-    const tx = await this.driver.deliverUsdc(r.response.quoteRequest.recipient, out);
+    const tx = await this.driver.deliverUsdc(r.response.quoteRequest.recipient, out, r.response.quoteRequest.customRecipientMsg);
     this.set(r, "SUCCESS", {
       amountIn: amount.toString(), amountInFormatted: q.amountInFormatted, amountInUsd: q.amountInUsd,
       amountOut: out.toString(), amountOutFormatted: q.amountOutFormatted, amountOutUsd: q.amountOutUsd,

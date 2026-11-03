@@ -61,3 +61,68 @@ describe("client and helpers", () => {
     expect(payLink("ada", { amount: "25" })).toBe("https://cascade.link/ada?amount=25");
   });
 });
+
+describe("payment URIs", () => {
+  it("builds EIP-681 for native and ERC-20, Solana Pay and BIP-21", async () => {
+    const { paymentUri, unitsToDecimal } = await import("../src/uris.js");
+    const to = "0x76b4c56085ED136a8744D52bE956396624a730E8";
+    expect(paymentUri({ chain: "base", depositAddress: to, amount: 2215954324319037n, decimals: 18, tokenContract: null })).toBe(`ethereum:${to}@8453?value=2215954324319037`);
+    expect(paymentUri({ chain: "arb", depositAddress: to, amount: "5000000", decimals: 6, tokenContract: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" })).toBe(
+      `ethereum:0xaf88d065e77c8cc2239327c5edb3a432268e5831@42161/transfer?address=${to}&uint256=5000000`,
+    );
+    expect(paymentUri({ chain: "sol", depositAddress: "So1Addr", amount: 25_000_000n, decimals: 6, tokenContract: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", label: "Lagos Prints", message: "A2 poster" })).toBe(
+      "solana:So1Addr?amount=25&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&label=Lagos%20Prints&message=A2%20poster",
+    );
+    expect(paymentUri({ chain: "btc", depositAddress: "bc1qxyz", amount: 36_765n, decimals: 8, tokenContract: null })).toBe("bitcoin:bc1qxyz?amount=0.00036765");
+    expect(paymentUri({ chain: "ton", depositAddress: "x", amount: 1n, decimals: 9, tokenContract: null })).toBeNull();
+    expect(unitsToDecimal(1n, 18)).toBe("0.000000000000000001");
+    expect(unitsToDecimal(100n, 2)).toBe("1");
+  });
+});
+
+describe("x402", () => {
+  it("encodes headers as base64 JSON, unicode-safe", async () => {
+    const { encodeHeader, decodeHeader } = await import("../src/x402.js");
+    const v = { a: "Lagos at dusk — ₦", n: 1 };
+    expect(decodeHeader(encodeHeader(v))).toEqual(v);
+  });
+
+  it("guard -> 402 -> pay -> pending -> paid, end to end with a fake Cascade", async () => {
+    const { x402Guard, fetchWithPayment, X402_HEADERS, decodeHeader } = await import("../src/x402.js");
+    let settleCalls = 0;
+    const fakeCascade = {
+      x402: {
+        prepare: async (p: { resource: string; refundTo?: string }) => ({
+          x402Version: 2 as const, error: "PAYMENT-SIGNATURE header is required", resource: { url: p.resource, description: "forecast" },
+          accepts: [{ scheme: "exact" as const, network: "eip155:8453", amount: "100000", asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", payTo: "0xdep", maxTimeoutSeconds: 300,
+            extra: { provider: "cascade" as const, sessionId: "cs_1", chain: "base", symbol: "USDC", decimals: 6, amountUsd: "0.10" } }],
+        }),
+        settle: async (p: { payload: { payload: { txHash: string } } }) =>
+          ++settleCalls < 2 ? { success: false, transaction: "", network: "eip155:8453", errorReason: "payment_pending" } : { success: true, transaction: `near:${p.payload.payload.txHash}`, network: "near:mainnet" },
+      },
+    };
+    const guard = x402Guard(fakeCascade as never, { price: "0.10", description: "forecast" });
+    const server: typeof fetch = async (url, init) => {
+      const g = await guard(new Request(String(url), init));
+      return g.paid ? new Response("sunny", { headers: g.headers }) : g.response;
+    };
+    const paid: string[] = [];
+    const r = await fetchWithPayment("https://api.example/forecast", {}, { fetch: server, pollMs: 1, pay: async (req) => (paid.push(req.payTo), "0xtx") });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("sunny");
+    expect(paid).toEqual(["0xdep"]);
+    expect(decodeHeader<{ success: boolean }>(r.headers.get(X402_HEADERS.response)!).success).toBe(true);
+    expect(settleCalls).toBe(2);
+  });
+
+  it("client refuses non-pending failures instead of looping", async () => {
+    const { fetchWithPayment, encodeHeader } = await import("../src/x402.js");
+    const required = { x402Version: 2, error: "", resource: { url: "u", description: "d" }, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "1", asset: "a", payTo: "p", maxTimeoutSeconds: 1, extra: {} }] };
+    let n = 0;
+    const server: typeof fetch = async () =>
+      n++ === 0
+        ? new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": encodeHeader(required) } })
+        : new Response("{}", { status: 402, headers: { "PAYMENT-RESPONSE": encodeHeader({ success: false, transaction: "", network: "x", errorReason: "already_used" }) } });
+    await expect(fetchWithPayment("u", {}, { fetch: server, pay: async () => "tx" })).rejects.toThrow("already_used");
+  });
+});

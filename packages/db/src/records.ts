@@ -102,6 +102,29 @@ export interface CheckoutSessionRecord {
   createdAt: string;
   expiresAt: string;
   paidAt: string | null;
+  /** Revenue split (on-chain split id) this session pays into. */
+  splitId?: number | null;
+  /** x402: the "METHOD url" this session pays for, and when the payment was used. */
+  x402Resource?: string | null;
+  consumedAt?: string | null;
+}
+
+export type RefundState = "awaiting_batch" | "awaiting_funding" | "funded" | "succeeded" | "failed";
+
+export interface RefundRecord {
+  id: string; // rf_...
+  sessionId: string;
+  merchantId: string;
+  owner: string;
+  amount: string; // USDC base units the merchant sends
+  depositAddress: string; // 1Click deposit address on NEAR that pays the customer back
+  lines: { recipient: string; amount: string; kind: "CrossChain"; dest: string; deadline_ms: number }[];
+  hash: string;
+  status: RefundState;
+  batchId: number | null;
+  destTx: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WebhookDelivery {
@@ -150,7 +173,15 @@ export interface Store {
   listSessions(merchantId: string, limit?: number): Promise<CheckoutSessionRecord[]>;
   findSessionByIdempotencyKey(merchantId: string, key: string): Promise<CheckoutSessionRecord | null>;
 
+  putRefund(r: RefundRecord): Promise<void>;
+  getRefund(id: string): Promise<RefundRecord | null>;
+  listRefunds(sessionId: string): Promise<RefundRecord[]>;
+  findRefundByDeposit(depositAddress: string): Promise<RefundRecord | null>;
+  /** Refunds still waiting for the merchant's funding or for delivery. */
+  listOpenRefunds(): Promise<RefundRecord[]>;
+
   putWebhook(w: WebhookDelivery): Promise<void>;
+  getWebhook(id: string): Promise<WebhookDelivery | null>;
   listDueWebhooks(nowIso: string): Promise<WebhookDelivery[]>;
   listWebhooks(merchantId: string): Promise<WebhookDelivery[]>;
 }

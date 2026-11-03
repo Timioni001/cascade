@@ -34,6 +34,12 @@ export interface IncomingQuoteParams {
   referral?: string;
   /** Override the payer's window (default 1 hour). */
   deadlineMs?: number;
+  /** Where refunds go: the payer's address on their chain (default) or an account inside NEAR Intents. */
+  refundType?: "ORIGIN_CHAIN" | "INTENTS";
+  /** Deliver with ft_transfer_call(recipient, msg): used to pay into a Cascade revenue split. */
+  recipientMsg?: string;
+  /** Platform fee, paid by the payer on top of the exact output. */
+  appFee?: { recipient: string; bps: number };
 }
 
 export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
@@ -47,11 +53,13 @@ export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
     destinationAsset: USDC_NEAR_ASSET,
     amount: p.amountOut.toString(),
     refundTo: p.refundTo,
-    refundType: "ORIGIN_CHAIN",
+    refundType: p.refundType ?? "ORIGIN_CHAIN",
     recipient: p.owner,
     recipientType: "DESTINATION_CHAIN",
     deadline: new Date((p.now ?? Date.now()) + (p.deadlineMs ?? INCOMING_DEADLINE_MS)).toISOString(),
     ...(p.referral ? { referral: p.referral } : {}),
+    ...(p.recipientMsg ? { customRecipientMsg: p.recipientMsg } : {}),
+    ...(p.appFee && p.appFee.bps > 0 ? { appFees: [{ recipient: p.appFee.recipient, fee: p.appFee.bps }] } : {}),
   };
 }
 
