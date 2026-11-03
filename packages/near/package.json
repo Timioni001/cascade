@@ -10,6 +10,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "near-api-js": "7.4.0"
+    "@cascade/core": "workspace:*",
+    "@cascade/sputnik": "workspace:*",
+    "near-api-js": "7.4.0",
+    "borsh": "2.0.0"
   }
 }

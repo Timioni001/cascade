@@ -33,23 +33,103 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
 
-  packages/db: {}
-
-  packages/near:
+  packages/db:
     dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../oneclick
+
+  packages/engine:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cascade/db':
+        specifier: workspace:*
+        version: link:../db
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../near
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../oneclick
+      '@cascade/sputnik':
+        specifier: workspace:*
+        version: link:../sputnik
       near-api-js:
         specifier: 7.4.0
         version: 7.4.0
 
-  packages/oneclick: {}
+  packages/near:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cascade/sputnik':
+        specifier: workspace:*
+        version: link:../sputnik
+      borsh:
+        specifier: 2.0.0
+        version: 2.0.0
+      near-api-js:
+        specifier: 7.4.0
+        version: 7.4.0
+
+  packages/oneclick:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
+      '@noble/hashes':
+        specifier: 2.2.0
+        version: 2.2.0
 
   packages/sdk: {}
 
-  packages/sputnik: {}
+  packages/sputnik:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
 
-  services/relayer: {}
+  services/relayer:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../../packages/near
+      '@hono/node-server':
+        specifier: 2.1.5
+        version: 2.1.5(hono@4.12.34)
+      hono:
+        specifier: 4.12.34
+        version: 4.12.34
+      near-api-js:
+        specifier: 7.4.0
+        version: 7.4.0
 
-  services/settler: {}
+  services/settler:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@cascade/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../../packages/near
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../../packages/oneclick
+      near-api-js:
+        specifier: 7.4.0
+        version: 7.4.0
 
 packages:
 
@@ -208,6 +288,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@hono/node-server@2.1.5':
+    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4 || ^5.0.0-0
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -589,6 +675,10 @@ packages:
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
+
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
+    engines: {node: '>=16.9.0'}
 
   http-cache-semantics@4.3.0:
     resolution: {integrity: sha512-M5t5LlJpS1UHMjvwRQVdFHvPISGeLAxNcrWuJkeGh0KxsqCHZ1O3NXZU/8x7cD0BDcGW8kapxMKTvwlqrNkHkA==}
@@ -1102,6 +1192,10 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@hono/node-server@2.1.5(hono@4.12.34)':
+    dependencies:
+      hono: 4.12.34
+
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
@@ -1498,6 +1592,8 @@ snapshots:
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
+
+  hono@4.12.34: {}
 
   http-cache-semantics@4.3.0: {}
 

@@ -1,0 +1,77 @@
+import type { DelegateSummary } from "@cascade/near";
+
+/**
+ * What the relayer is willing to pay gas for. Everything else is refused.
+ *
+ * The relayer can only submit what the user signed (NEP-366), so this policy
+ * is about cost and abuse, not custody: it stops our gas from being spent on
+ * other people's contracts.
+ */
+export interface RelayPolicyConfig {
+  app: string;
+  usdc: string;
+  /** Max gas per function call action. */
+  maxGas: bigint;
+  /** Max total gas per delegate. */
+  maxTotalGas: bigint;
+  /** Is `account` registered with Cascade as a DAO owner? */
+  isRegisteredDao: (account: string) => Promise<boolean>;
+}
+
+/** Methods on the app contract a user may call through the relayer. */
+export const APP_METHODS = new Set([
+  "register_owner",
+  "create_invoice",
+  "void_invoice",
+  "create_batch",
+  "cancel_batch",
+  "set_batch_proposal",
+  "execute_batch",
+  "refund_failed",
+]);
+
+export const DAO_METHODS = new Set(["add_proposal", "act_proposal"]);
+
+export type Verdict = { ok: true; kind: "app" | "fund" | "dao" } | { ok: false; reason: string };
+
+export async function checkDelegate(d: DelegateSummary, cfg: RelayPolicyConfig): Promise<Verdict> {
+  if (d.otherActions.length > 0) return { ok: false, reason: `only function calls are relayed (got ${d.otherActions.join(", ")})` };
+  if (d.calls.length === 0) return { ok: false, reason: "no actions" };
+  if (d.calls.length > 4) return { ok: false, reason: "too many actions" };
+  let total = 0n;
+  for (const c of d.calls) {
+    if (c.gas > cfg.maxGas) return { ok: false, reason: `gas ${c.gas} above limit` };
+    total += c.gas;
+  }
+  if (total > cfg.maxTotalGas) return { ok: false, reason: "total gas above limit" };
+
+  if (d.receiverId === cfg.app) {
+    for (const c of d.calls) {
+      if (!APP_METHODS.has(c.method)) return { ok: false, reason: `method ${c.method} is not relayed` };
+      if (c.deposit !== 0n) return { ok: false, reason: "app calls carry no deposit" };
+    }
+    return { ok: true, kind: "app" };
+  }
+
+  if (d.receiverId === cfg.usdc) {
+    // The only token call we pay for: a person funding their own batch.
+    // The 1 yoctoNEAR comes from the user's own balance, not ours.
+    for (const c of d.calls) {
+      if (c.method !== "ft_transfer_call") return { ok: false, reason: `token method ${c.method} is not relayed` };
+      if (c.deposit !== 1n) return { ok: false, reason: "ft_transfer_call needs exactly 1 yoctoNEAR" };
+      const a = c.args as { receiver_id?: string } | undefined;
+      if (a?.receiver_id !== cfg.app) return { ok: false, reason: "tokens may only be sent to Cascade" };
+    }
+    return { ok: true, kind: "fund" };
+  }
+
+  if (await cfg.isRegisteredDao(d.receiverId)) {
+    for (const c of d.calls) {
+      if (!DAO_METHODS.has(c.method)) return { ok: false, reason: `DAO method ${c.method} is not relayed` };
+      if (c.deposit !== 0n) return { ok: false, reason: "DAO calls are relayed only with a zero bond" };
+    }
+    return { ok: true, kind: "dao" };
+  }
+
+  return { ok: false, reason: `receiver ${d.receiverId} is not Cascade, USDC or a registered DAO` };
+}
