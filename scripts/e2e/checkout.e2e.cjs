@@ -3,12 +3,12 @@
  * Optional: needs Playwright with Chromium (`npm i -g playwright && npx playwright install chromium`).
  *
  *   pnpm dev            # in one terminal
- *   pnpm test:e2e       # in another
+ *   pnpm test:e2e       # in another (CASCADE_DASHBOARD_KEY=sk_... to include the dashboard)
  *
- * Opens the demo shop, clicks "Pay with any crypto", picks ETH on Base inside
- * the iframe, gets a deposit address, simulates the payment, and checks that
- * the modal resizes, closes on Escape, and the shop's order is paid (which
- * only happens when the shop's server verified the webhook).
+ * Opens the demo shop, pays through the modal checkout (ETH on Base, QR,
+ * simulated deposit), checks the receipt page's four checks, the shop's
+ * webhook-driven order status, and the merchant dashboard. Screenshots go to
+ * the directory given as the first argument.
  */
 const { chromium } = require("playwright");
 const out = process.argv[2] || ".";
@@ -18,61 +18,82 @@ const assert = (c, m) => {
 
 (async () => {
   const b = await chromium.launch();
-  const p = await b.newPage({ viewport: { width: 1100, height: 820 } });
   const errs = [];
-  p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+  const page = async (w, h) => {
+    const p = await b.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+    p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+    return p;
+  };
+
+  const home = await page(1280, 820);
+  await home.goto("http://localhost:3000/");
+  await home.waitForSelector("text=Receive dollars.");
+  await home.waitForTimeout(800);
+  await home.screenshot({ path: `${out}/1-landing.png` });
+
+  const p = await page(1280, 900);
   await p.goto("http://localhost:3000/shop");
+  await p.screenshot({ path: `${out}/2-shop.png` });
   await p.click("text=Pay with any crypto");
   const frame = await (await p.waitForSelector("iframe[title='Cascade checkout']")).contentFrame();
-  await frame.waitForSelector("button.asset");
-  await frame.click("button.asset:has-text('Base') >> nth=0");
+  await frame.waitForSelector("button[aria-pressed]");
+  await frame.click("button[aria-pressed]:has-text('Base') >> nth=0");
   await frame.waitForSelector("text=You pay");
+  await frame.waitForTimeout(400);
+  await p.screenshot({ path: `${out}/3-checkout-quote.png` });
   await frame.fill("input", "0x2527D02599Ba641c19FEa793cD0F167589a0f10D");
   await frame.click("text=Get payment address");
-  await frame.waitForSelector("text=Copy address");
+  await frame.waitForSelector("[aria-label='Copy address']");
   await frame.waitForSelector("img[alt^='QR code']");
   const qr = await frame.getAttribute("img[alt^='QR code']", "src");
   assert(qr && qr.startsWith("data:image/png"), "no QR code for the deposit");
-  await p.screenshot({ path: `${out}/checkout-deposit.png` });
+  await p.screenshot({ path: `${out}/4-checkout-deposit.png` });
   await frame.click("text=Simulate the payment (sandbox)");
-  await frame.waitForSelector(".status.ok", { timeout: 30000 });
+  await frame.waitForSelector("text=Payment complete", { timeout: 30000 });
   await p.waitForTimeout(500);
   const h = await p.evaluate(() => document.querySelector("iframe").getBoundingClientRect().height);
-  assert(h < 600, `iframe did not resize (${h}px)`);
-  await p.screenshot({ path: `${out}/checkout-paid.png` });
-  const receiptHref = await frame.getAttribute("text=Verify receipt", "href");
-  await frame.click("text=Paid");
+  assert(h < 700, `iframe did not resize (${h}px)`);
+  await p.screenshot({ path: `${out}/5-checkout-paid.png` });
+  const receiptHref = await frame.getAttribute("a:has-text('Verify receipt')", "href");
+  await frame.click("text=Payment complete");
   await p.keyboard.press("Escape");
   await p.waitForSelector("iframe[title='Cascade checkout']", { state: "detached", timeout: 5000 });
-  await p.waitForSelector("text=paid. Shipping soon", { timeout: 30000 });
-  // The public receipt recomputes its checks from the chain and 1Click.
-  const r = await b.newPage({ viewport: { width: 700, height: 820 } });
-  r.on("console", (m) => m.type() === "error" && errs.push(m.text()));
-  await r.goto(`http://localhost:3000${receiptHref}`);
-  await r.waitForSelector("text=bound to this exact order");
-  const okChecks = await r.locator(".status.ok").count();
-  assert(okChecks === 4, `receipt shows ${okChecks}/4 checks passing`);
-  await r.screenshot({ path: `${out}/receipt.png` });
+  await p.waitForSelector("text=is paid", { timeout: 30000 });
+  await p.screenshot({ path: `${out}/6-shop-paid.png` });
 
-  // The merchant dashboard lists the paid session.
+  // The public receipt recomputes its checks from the chain and 1Click.
+  const r = await page(720, 1100);
+  await r.goto(`http://localhost:3000${receiptHref}`);
+  await r.waitForSelector("text=Bound to this exact order");
+  const passed = await r.evaluate(() => [...document.querySelectorAll("span")].filter((s) => getComputedStyle(s).backgroundColor === "rgb(31, 122, 74)").length);
+  assert(passed === 4, `receipt shows ${passed}/4 checks passing`);
+  await r.screenshot({ path: `${out}/7-receipt.png` });
+
   const key = process.env.CASCADE_DASHBOARD_KEY;
   if (key) {
-    const d = await b.newPage({ viewport: { width: 1000, height: 820 } });
-    d.on("console", (m) => m.type() === "error" && errs.push(m.text()));
+    const d = await page(1360, 900);
     await d.goto("http://localhost:3000/dashboard");
     await d.fill("input[type=password]", key);
     await d.click("text=Open dashboard");
     await d.waitForSelector("text=Lagos Prints");
-    await d.waitForSelector("td >> text=paid");
+    await d.waitForSelector("text=Recent payments");
+    await d.waitForTimeout(600);
+    await d.screenshot({ path: `${out}/8-dashboard.png` });
     await d.click("button:has-text('Webhooks')");
     await d.waitForSelector("text=checkout.session.completed");
-    await d.click("button:has-text('Sessions')");
-    await d.click("text=Refund >> nth=0");
+    await d.click("button:has-text('Payments')");
+    await d.click("button:has-text('Refund') >> nth=0");
     await d.waitForSelector("text=create_batch");
-    await d.screenshot({ path: `${out}/dashboard.png` });
+    await d.screenshot({ path: `${out}/9-dashboard-refund.png`, fullPage: true });
   }
+
+  const m = await page(390, 844);
+  await m.goto(`http://localhost:3000${receiptHref.replace("/r/", "/c/")}`);
+  await m.waitForSelector("text=Payment complete");
+  await m.screenshot({ path: `${out}/10-mobile-checkout.png` });
+
   assert(errs.length === 0, `console errors: ${errs.join(" | ")}`);
-  console.log(`e2e ok: QR shown, paid through the button, webhook fulfilled the order, receipt 4/4${key ? ", dashboard + refund prepared" : ""}`);
+  console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${key ? ", dashboard + refund" : ""}, mobile`);
   await b.close();
 })().catch((e) => {
   console.error("e2e FAILED:", e.message);

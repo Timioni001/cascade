@@ -12,9 +12,9 @@ import { dirname } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { SqliteStore } from "@cascade/db";
-import { AgentPayments, Checkout, Refunds, checkoutHooks } from "@cascade/engine";
+import { AgentPayments, Checkout, Refunds, checkoutHooks, mintingDriver } from "@cascade/engine";
 import { Chain } from "@cascade/near";
-import { HttpOneClick } from "@cascade/oneclick";
+import { HttpOneClick, MockOneClick, type OneClick } from "@cascade/oneclick";
 import { apiApp } from "@cascade/api";
 import { Relayer, relayerApp } from "@cascade/relayer";
 import { Settler, nearSettlerChain } from "@cascade/settler";
@@ -40,7 +40,13 @@ try {
 mkdirSync(dirname(cfg.dbPath), { recursive: true });
 const store = await SqliteStore.open(cfg.dbPath);
 const chain = new Chain(cfg.rpc, cfg.network);
-const oneclick = new HttpOneClick(cfg.oneclickJwt ? { jwt: cfg.oneclickJwt } : {});
+// Testnet demo: NEAR Intents has no testnet, so the swap is simulated and the
+// "delivery" mints testnet mock USDC. Everything else is real testnet state.
+const mock =
+  cfg.oneclick.mode === "mock"
+    ? new MockOneClick({ driver: mintingDriver(chain, chain.account(cfg.oneclick.minter.id, cfg.oneclick.minter.key), cfg.usdc), authenticated: true, seed: `testnet-${Date.now()}` })
+    : null;
+const oneclick: OneClick = mock ?? new HttpOneClick(cfg.oneclickJwt ? { jwt: cfg.oneclickJwt } : {});
 const checkout = new Checkout({
   store, oneclick, chain, app: cfg.app, publicUrl: cfg.publicUrl, keyMode: cfg.network === "mainnet" ? "live" : "test",
   ...(cfg.fee ? { fee: cfg.fee } : {}),
@@ -58,10 +64,10 @@ const settler = new Settler({
 const app = new Hono();
 app.get("/health", (c) => c.json({ ok: true, network: cfg.network, app: cfg.app }));
 app.route("/relayer", relayerApp(relayer, { trustProxy: cfg.trustProxy, allowOrigins: cfg.allowOrigins }));
-app.route("/", apiApp({ checkout, refunds, agents: new AgentPayments(checkout), trustProxy: cfg.trustProxy }));
+app.route("/", apiApp({ checkout, refunds, agents: new AgentPayments(checkout), trustProxy: cfg.trustProxy, ...(mock ? { dev: { oneclick: mock } } : {}) }));
 
 serve({ fetch: app.fetch, port: cfg.port, hostname: "0.0.0.0" });
-console.log(`cascade server on :${cfg.port} (${cfg.network}, app ${cfg.app}, 1Click ${cfg.oneclickJwt ? "with" : "without"} partner JWT)`);
+console.log(`cascade server on :${cfg.port} (${cfg.network}, app ${cfg.app}, 1Click ${mock ? "SIMULATED (testnet demo)" : cfg.oneclickJwt ? "live, with partner JWT" : "live, without partner JWT"})`);
 
 const stop = new AbortController();
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => stop.abort());

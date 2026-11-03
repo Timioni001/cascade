@@ -22,7 +22,8 @@
     "deploy:cascade": "tsx scripts/mainnet/deploy.ts",
     "spike": "tsx scripts/mainnet/spike.ts",
     "agent": "tsx scripts/agent-demo.ts",
-    "backend": "tsx services/server/src/main.ts"
+    "backend": "tsx services/server/src/main.ts",
+    "demo-merchant": "tsx scripts/mainnet/demo-merchant.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

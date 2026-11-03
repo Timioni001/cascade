@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Copy, ExternalLink, Loader2, ShieldCheck, Wallet, X } from "lucide-react";
 import { buildEvmTransfer, isEvmChain, payWithEvmWallet, type Eip1193 } from "@cascade/sdk/evm";
 import type { CheckoutSession, PayAsset, PaymentPreview } from "@cascade/sdk";
 import type { CheckoutMessage } from "@cascade/sdk/browser";
 import { paymentUri } from "@cascade/sdk/uris";
 import { PaymentQr } from "../../components/PaymentQr";
-import { API } from "../../../lib/api";
+import { CoinMark, DemoBanner, Mark, SANDBOX, chainName, short } from "../../components/ui";
+import { publicApi as api } from "../../../lib/api";
 
-const SANDBOX = process.env.NEXT_PUBLIC_SANDBOX === "1";
-
-/** What we show first. Everything else 1Click supports is under "More coins". */
+/** Shown first; everything else 1Click supports is under "More coins". */
 const FEATURED = [
   "nep141:base.omft.near",
   "nep141:eth.omft.near",
@@ -19,37 +19,50 @@ const FEATURED = [
   "nep141:sol.omft.near",
   "nep141:btc.omft.near",
 ];
-const CHAIN_NAMES: Record<string, string> = {
-  near: "NEAR", eth: "Ethereum", base: "Base", arb: "Arbitrum", op: "Optimism", pol: "Polygon", bsc: "BNB Chain",
-  sol: "Solana", btc: "Bitcoin", tron: "Tron", ton: "TON", doge: "Dogecoin", xrp: "XRP", zec: "Zcash", sui: "Sui",
-};
-const chainName = (c: string) => CHAIN_NAMES[c] ?? c;
-/** Display only: at most 8 decimals, trailing zeros trimmed, never rounded down to 0. The wallet always gets the exact amount. */
-function short(v: string): string {
-  const [w, f = ""] = v.split(".");
-  const t = f.slice(0, 8).replace(/0+$/, "");
-  return t ? `${w}.${t}` : (w ?? v);
-}
 
-async function api<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`${API}/v1/public${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const j = (await r.json().catch(() => ({}))) as T & { error?: { message: string } };
-  if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
-  return j;
-}
+type Step = 0 | 1 | 2 | 3;
 
-function plain(status: string | undefined, session: CheckoutSession | null): { text: string; tone: "" | "ok" | "bad" } {
-  if (session?.status === "paid") return { text: "Paid", tone: "ok" };
-  if (session?.status === "expired") return { text: "Expired", tone: "bad" };
+function statusText(status: string | undefined): string {
   switch (status) {
-    case "PENDING_DEPOSIT": return { text: "Waiting for your payment", tone: "" };
-    case "KNOWN_DEPOSIT_TX": case "PROCESSING": return { text: "Payment received, converting to USD", tone: "" };
-    case "INCOMPLETE_DEPOSIT": return { text: "Less than the full amount arrived", tone: "bad" };
-    case "SUCCESS": return { text: "Delivered, confirming receipt", tone: "" };
-    case "REFUNDED": return { text: "Refunded to you", tone: "bad" };
-    case "FAILED": return { text: "Failed", tone: "bad" };
-    default: return { text: "Choose how to pay", tone: "" };
+    case "PENDING_DEPOSIT": return "Waiting for your payment";
+    case "KNOWN_DEPOSIT_TX": case "PROCESSING": return "Payment received, converting to dollars";
+    case "INCOMPLETE_DEPOSIT": return "Less than the full amount arrived";
+    case "SUCCESS": return "Delivered, confirming receipt";
+    case "REFUNDED": return "Refunded to you";
+    case "FAILED": return "Failed";
+    default: return "Waiting for your payment";
   }
+}
+
+function Steps({ step }: { step: Step }) {
+  const labels = ["Coin", "Send", "Done"];
+  return (
+    <ol className="row-start" style={{ listStyle: "none", padding: 0, margin: 0, gap: 6 }} aria-label="Progress">
+      {labels.map((l, i) => (
+        <li key={l} className="row-start tiny" style={{ gap: 6, color: i <= step ? "var(--ink)" : "var(--muted)" }} aria-current={i === step ? "step" : undefined}>
+          <span style={{ width: 18, height: 18, borderRadius: 999, display: "inline-grid", placeItems: "center", fontSize: 10, fontWeight: 700, background: i < step ? "var(--accent)" : i === step ? "var(--ink)" : "var(--card-2)", color: i <= step ? "var(--bg)" : "var(--muted)" }}>
+            {i < step ? <Check size={11} strokeWidth={3} /> : i + 1}
+          </span>
+          {l}
+          {i < 2 && <span style={{ width: 18, height: 1, background: "var(--line-strong)", marginLeft: 2 }} />}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function useCountdown(deadline: string | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!deadline) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadline]);
+  if (!deadline) return null;
+  const ms = Math.max(0, Date.parse(deadline) - now);
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export function Checkout({ id, embed, parent }: { id: string; embed: boolean; parent: string | null }) {
@@ -115,6 +128,19 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
   const featured = useMemo(() => FEATURED.map((f) => assets.find((a) => a.assetId === f)).filter((a): a is PayAsset => !!a), [assets]);
   const list = showAll ? [...assets].sort((a, b) => a.symbol.localeCompare(b.symbol) || a.chain.localeCompare(b.chain)) : featured;
   const wallet = typeof window !== "undefined" ? ((window as unknown as { ethereum?: Eip1193 }).ethereum ?? null) : null;
+  const countdown = useCountdown(session?.payment?.deadline);
+
+  async function run(f: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await f();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function choose(a: PayAsset) {
     setAssetId(a.assetId);
@@ -127,134 +153,176 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
     }
   }
 
-  async function payWithWallet() {
-    if (!asset || !wallet) return;
-    setBusy(true);
-    setError(null);
-    try {
+  const payWithWallet = () =>
+    run(async () => {
+      if (!asset || !wallet) return;
       const [from] = (await wallet.request({ method: "eth_requestAccounts" })) as string[];
       const s = await api<CheckoutSession>(`/sessions/${id}/pay`, { assetId: asset.assetId, refundTo: from });
       setSession(s);
       const tx = buildEvmTransfer({ chain: asset.chain, depositAddress: s.payment!.depositAddress, amount: s.payment!.amountIn, tokenContract: asset.contractAddress });
       const hash = await payWithEvmWallet(wallet, tx);
       setSession(await api<CheckoutSession>(`/sessions/${id}/deposit`, { txHash: hash }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
+
+  const payManually = () => run(async () => setSession(await api<CheckoutSession>(`/sessions/${id}/pay`, { assetId: asset!.assetId, refundTo: refundTo.trim() })));
+  const simulate = () => run(async () => setSession(await api<CheckoutSession>(`/dev/sessions/${id}/simulate-deposit`, {})));
+
+  if (error && !session) return <main className="narrow"><div className="card error">{error}</div></main>;
+  if (!session) {
+    return (
+      <main className="narrow">
+        <div className="card row-start muted"><Loader2 size={16} className="spin" /> Loading checkout…</div>
+      </main>
+    );
   }
 
-  async function payManually() {
-    if (!asset) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setSession(await api<CheckoutSession>(`/sessions/${id}/pay`, { assetId: asset.assetId, refundTo: refundTo.trim() }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function simulate() {
-    setBusy(true);
-    try {
-      setSession(await api<CheckoutSession>(`/dev/sessions/${id}/simulate-deposit`, {}));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (error && !session) return <main><div className="card error">{error}</div></main>;
-  if (!session) return <main><div className="card muted">Loading…</div></main>;
-
-  const st = plain(session.payment?.status, session);
   const paid = session.status === "paid";
   const p = session.payment;
+  const step: Step = paid ? 3 : p ? 1 : 0;
   const evm = asset ? isEvmChain(asset.chain) : false;
+  const payAsset = p ? assets.find((x) => x.assetId === p.asset) : null;
+  const uri = p && payAsset ? paymentUri({ chain: p.chain, depositAddress: p.depositAddress, amount: p.amountIn, decimals: payAsset.decimals, tokenContract: payAsset.contractAddress, label: session.merchant.name, message: session.description, memo: p.depositMemo }) : null;
 
   return (
-    <main ref={rootRef}>
-      <div className="card stack">
-        <div className="row">
-          <div>
-            <div className="muted small">Pay {session.merchant.name}</div>
-            <div className="amount">${session.amountFormatted}</div>
-            <div className="muted small">{session.description}</div>
-          </div>
-          {embed && <button className="btn secondary" style={{ width: "auto" }} onClick={() => post("closed")} aria-label="Close">✕</button>}
-        </div>
-        <hr />
-
-        {paid ? (
-          <div className="stack">
-            <div className={`status ok`}><span className="dot" />Paid</div>
-            <div className="small muted">
-              {session.merchant.name} received ${session.amountFormatted} in USDC on NEAR.
-              {session.receipt && <> Receipt #{session.receipt.id} is recorded on-chain. <a href={`/r/${session.id}`} target="_blank" rel="noreferrer">Verify receipt ↗</a></>}
-            </div>
-            {session.successUrl && !embed && <a className="btn" href={session.successUrl} style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Back to {session.merchant.name}</a>}
-          </div>
-        ) : p ? (
-          <div className="stack">
-            <div className={`status ${st.tone}`}><span className="dot" />{st.text}</div>
-            <div className="small muted">Send exactly</div>
-            <div className="row"><strong>{short(p.amountInFormatted)} {assets.find((a) => a.assetId === p.asset)?.symbol ?? ""}</strong><span className="muted small">on {chainName(p.chain)}</span></div>
-            <div className="small muted">to this one-time address</div>
-            <div className="mono">{p.depositAddress}</div>
-            {(() => {
-              const a = assets.find((x) => x.assetId === p.asset);
-              const uri = a ? paymentUri({ chain: p.chain, depositAddress: p.depositAddress, amount: p.amountIn, decimals: a.decimals, tokenContract: a.contractAddress, label: session.merchant.name, message: session.description, memo: p.depositMemo }) : null;
-              return uri ? <PaymentQr uri={uri} label={`${short(p.amountInFormatted)} ${a!.symbol} on ${chainName(p.chain)}`} /> : null;
-            })()}
-            {p.depositMemo && <div className="small">Memo (required): <span className="mono">{p.depositMemo}</span></div>}
-            <button className="btn secondary" onClick={() => navigator.clipboard.writeText(p.depositAddress).then(() => setCopied(true))}>{copied ? "Copied" : "Copy address"}</button>
-            <div className="small muted">Use this address once, before {new Date(p.deadline).toLocaleTimeString()}. If anything goes wrong your coins are refunded to you automatically.</div>
-            {SANDBOX && p.status === "PENDING_DEPOSIT" && <button className="btn" disabled={busy} onClick={simulate}>Simulate the payment (sandbox)</button>}
-          </div>
-        ) : (
-          <div className="stack">
-            <div className="small muted">Pay with</div>
-            <div className="assets">
-              {list.map((a) => (
-                <button key={a.assetId} className="asset" aria-pressed={a.assetId === assetId} onClick={() => choose(a)}>
-                  <div><strong>{a.symbol}</strong></div>
-                  <div className="small muted">{chainName(a.chain)}</div>
-                </button>
-              ))}
-            </div>
-            {!showAll && assets.length > featured.length && <button className="btn secondary" onClick={() => setShowAll(true)}>More coins ({assets.length})</button>}
-            {asset && (
-              <div className="stack">
-                {preview ? (
-                  <div className="row"><span>You pay</span><strong>{short(preview.amountInFormatted)} {asset.symbol} <span className="muted small">≈ ${Number(preview.amountInUsd).toFixed(2)}</span></strong></div>
-                ) : (
-                  <div className="muted small">Getting a price…</div>
-                )}
-                {evm && wallet ? (
-                  <button className="btn" disabled={!preview || busy} onClick={payWithWallet}>{busy ? "Confirm in your wallet…" : `Pay with wallet`}</button>
-                ) : (
-                  <>
-                    <input placeholder={`Your ${chainName(asset.chain)} address (for refunds)`} value={refundTo} onChange={(e) => setRefundTo(e.target.value)} />
-                    <button className="btn" disabled={!preview || busy || refundTo.trim().length < 10} onClick={payManually}>Get payment address</button>
-                  </>
-                )}
-                {evm && !wallet && <div className="small muted">No browser wallet found: you can still pay by sending to an address.</div>}
+    <>
+      {!embed && <DemoBanner />}
+      <main ref={rootRef} className="narrow" style={embed ? { padding: 8 } : undefined}>
+        <div className="card raised stack-lg rise">
+          <div className="row">
+            <div className="row-start">
+              <span className="brand-mark" style={{ width: 36, height: 36, borderRadius: 12, fontWeight: 700 }}>{session.merchant.name.slice(0, 1)}</span>
+              <div>
+                <div style={{ fontWeight: 600 }}>{session.merchant.name}</div>
+                <div className="tiny muted">{session.merchant.account}</div>
               </div>
-            )}
+            </div>
+            {embed && <button className="icon-btn" onClick={() => post("closed")} aria-label="Close checkout"><X size={16} /></button>}
           </div>
-        )}
-        {error && <div className="error small">{error}</div>}
-        {session.split && !paid && (
-          <div className="small muted">This payment is shared automatically between {session.split.shares.length} recipients, on-chain.</div>
-        )}
-        {session.feeBps > 0 && !paid && <div className="small muted">The price shown includes a {session.feeBps / 100}% service fee. {session.merchant.name} receives exactly ${session.amountFormatted}.</div>}
-        <div className="small muted" style={{ textAlign: "center" }}>Settles in USDC on NEAR through NEAR Intents</div>
-      </div>
-    </main>
+
+          <div>
+            <div className="amount">${session.amountFormatted}</div>
+            <div className="soft small" style={{ marginTop: 6 }}>{session.description}</div>
+          </div>
+
+          <div><Steps step={step} /></div>
+
+          {paid ? (
+            <div className="stack-lg rise" style={{ textAlign: "center", padding: "8px 0" }}>
+              <div style={{ width: 64, height: 64, borderRadius: 999, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", margin: "0 auto" }}>
+                <Check size={30} strokeWidth={3} />
+              </div>
+              <div>
+                <div className="h2">Payment complete</div>
+                <p className="soft small" style={{ margin: "6px 0 0" }}>{session.merchant.name} received ${session.amountFormatted} in dollars (USDC on NEAR).</p>
+              </div>
+              {session.receipt && (
+                <a className="btn ghost block" href={`/r/${session.id}`} target="_blank" rel="noreferrer">
+                  Verify receipt #{session.receipt.id} <ExternalLink size={14} />
+                </a>
+              )}
+              {session.successUrl && !embed && <a className="btn block" href={session.successUrl}>Back to {session.merchant.name}</a>}
+            </div>
+          ) : p ? (
+            <div className="stack-lg rise">
+              <div className="well row">
+                <div className="row-start">
+                  {payAsset && <CoinMark symbol={payAsset.symbol} chain={payAsset.chain} />}
+                  <div>
+                    <div className="tiny muted">Send exactly</div>
+                    <div style={{ fontWeight: 600, fontSize: 18 }} className="num">{short(p.amountInFormatted)} {payAsset?.symbol}</div>
+                  </div>
+                </div>
+                <span className="pill">{chainName(p.chain)}</span>
+              </div>
+
+              {uri && (
+                <div style={{ display: "grid", placeItems: "center" }}>
+                  <div className="paper" style={{ padding: 10 }}><PaymentQr uri={uri} label={`${short(p.amountInFormatted)} ${payAsset?.symbol} on ${chainName(p.chain)}`} /></div>
+                </div>
+              )}
+
+              <div className="stack">
+                <div className="tiny muted">To this one-time address{countdown ? ` · expires in ${countdown}` : ""}</div>
+                <div className="well row" style={{ padding: "10px 10px 10px 16px" }}>
+                  <span className="mono" style={{ fontSize: 12 }}>{p.depositAddress}</span>
+                  <button className="icon-btn" aria-label="Copy address" onClick={() => navigator.clipboard.writeText(p.depositAddress).then(() => setCopied(true))}>
+                    {copied ? <Check size={15} /> : <Copy size={15} />}
+                  </button>
+                </div>
+                {p.depositMemo && <div className="small">Memo (required): <span className="mono">{p.depositMemo}</span></div>}
+              </div>
+
+              <div className="row-start small soft">
+                {p.status === "REFUNDED" || p.status === "FAILED" ? <span className="badge bad">{statusText(p.status)}</span> : <><Loader2 size={15} className="spin" /> {statusText(p.status)}</>}
+              </div>
+              {SANDBOX && p.status === "PENDING_DEPOSIT" && <button className="btn block" disabled={busy} onClick={simulate}>Simulate the payment (sandbox)</button>}
+              <p className="tiny muted" style={{ margin: 0 }}>Send once, before it expires. If anything goes wrong, your coins are refunded to you automatically.</p>
+            </div>
+          ) : (
+            <div className="stack-lg">
+              <div className="tiny muted">Pay with</div>
+              <div className="grid-2">
+                {list.map((a) => {
+                  const on = a.assetId === assetId;
+                  return (
+                    <button key={a.assetId} onClick={() => choose(a)} aria-pressed={on} className="row-start"
+                      style={{ padding: 12, borderRadius: "var(--r-md)", background: on ? "var(--accent-soft)" : "var(--card-2)", border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, cursor: "pointer", textAlign: "left" }}>
+                      <CoinMark symbol={a.symbol} chain={a.chain} size={32} />
+                      <span>
+                        <span style={{ display: "block", fontWeight: 600, fontSize: 14 }}>{a.symbol}</span>
+                        <span className="tiny muted">{chainName(a.chain)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!showAll && assets.length > featured.length && (
+                <button className="btn ghost block sm" onClick={() => setShowAll(true)}>More coins ({assets.length}) <ChevronDown size={14} /></button>
+              )}
+
+              {asset && (
+                <div className="stack rise">
+                  <div className="well stack" style={{ marginTop: 0 }}>
+                    <div className="row small">
+                      <span className="muted">You pay</span>
+                      {preview ? <strong className="num">{short(preview.amountInFormatted)} {asset.symbol}</strong> : <Loader2 size={14} className="spin" />}
+                    </div>
+                    <div className="row small">
+                      <span className="muted">≈ in dollars</span>
+                      <span className="num">{preview ? `$${Number(preview.amountInUsd).toFixed(2)}` : "…"}</span>
+                    </div>
+                    {session.feeBps > 0 && (
+                      <div className="row tiny muted"><span>Includes {session.feeBps / 100}% service fee and network costs</span><span /></div>
+                    )}
+                    <hr className="divider" />
+                    <div className="row small"><span className="muted">{session.merchant.name} receives</span><strong className="num">${session.amountFormatted}</strong></div>
+                  </div>
+                  {evm && wallet ? (
+                    <button className="btn block" disabled={!preview || busy} onClick={payWithWallet}>
+                      {busy ? <><Loader2 size={16} className="spin" /> Confirm in your wallet</> : <><Wallet size={16} /> Pay with wallet</>}
+                    </button>
+                  ) : (
+                    <>
+                      <input className="input" placeholder={`Your ${chainName(asset.chain)} address, for refunds`} value={refundTo} onChange={(e) => setRefundTo(e.target.value)} aria-label="Refund address" />
+                      <button className="btn block" disabled={!preview || busy || refundTo.trim().length < 10} onClick={payManually}>
+                        {busy ? <Loader2 size={16} className="spin" /> : null} Get payment address
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {session.split && !paid && <div className="tiny muted">This payment is split automatically between {session.split.shares.length} recipients, on-chain.</div>}
+          {error && <div className="error small">{error}</div>}
+
+          <div className="row tiny muted" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+            <span className="row-start" style={{ gap: 6 }}><ShieldCheck size={14} /> No account needed</span>
+            <span className="row-start" style={{ gap: 6 }}><Mark size={12} /> Cascade · NEAR Intents</span>
+          </div>
+        </div>
+      </main>
+    </>
   );
 }

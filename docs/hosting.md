@@ -21,6 +21,7 @@ Do the [mainnet runbook](mainnet-runbook.md) first: the backend reads its contra
 | `ONECLICK_JWT` | strongly recommended | Partner JWT from partners.near-intents.org. Without it: extra fee and no private payments |
 | `CASCADE_FEE_BPS`, `CASCADE_FEE_RECIPIENT` | optional | Cascade's fee (0-200 bps), paid by the customer into this NEAR Intents account |
 | `CASCADE_ALLOW_ORIGINS` | optional | Extra origins allowed to call the relayer, comma-separated |
+| `CASCADE_ONECLICK` | optional | `live` (default) or `mock`: the testnet demo mode (simulated swaps that mint testnet mock USDC; refused on mainnet). Needs `CASCADE_ROOT_PRIVATE_KEY`, the mock token's minter. See the [runbook](mainnet-runbook.md) Part A |
 | `NEAR_RPC_URL` | optional | Defaults to FastNEAR's free RPC |
 | `CASCADE_DB` | optional | Default `.data/cascade.sqlite` (`/data/cascade.sqlite` in Docker) |
 | `PORT` | optional | Default 8788 |
@@ -51,11 +52,11 @@ Keep the relayer funded: it pays every user's gas and each new name (0.01 NEAR +
 | Variable | Value |
 | --- | --- |
 | `NEXT_PUBLIC_CASCADE_API` | `https://<backend>` |
-| `NEXT_PUBLIC_NEAR_NETWORK` | `mainnet` (turns on explorer links) |
+| `NEXT_PUBLIC_NEAR_NETWORK` | `mainnet` or `testnet` (explorer links point to that network) |
 | `CASCADE_API_URL` | `https://<backend>` (server-side calls: dashboard proxy, demo shop) |
 | `CASCADE_SECRET_KEY`, `CASCADE_WEBHOOK_SECRET` | Only for the demo shop: a merchant you onboarded |
 
-3. Do **not** set `NEXT_PUBLIC_SANDBOX` in production; it shows the "simulate payment" button.
+3. Set `NEXT_PUBLIC_SANDBOX=1` only for the testnet demo (backend in `CASCADE_ONECLICK=mock`): it shows the demo banner and the "simulate payment" button. Never in production.
 4. Set the backend's `CASCADE_PUBLIC_URL` to the Vercel URL, and the demo merchant's webhook URL to `https://<web>/api/shop/webhook`.
 
 ## After going live

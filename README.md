@@ -4,7 +4,7 @@ Checkout for NEAR Intents: let anyone pay you with any coin on any chain, and re
 
 A print shop in Lagos sells a $25 poster to a customer in Berlin who holds ETH on Base. Card processors are slow and expensive to reach from Nigeria; plain crypto means telling the customer which coin, which chain and which address, and then checking a block explorer by hand. With Cascade the shop adds one button. The customer picks the coin they already have and pays from their wallet (or scans a QR code); the shop receives exactly $25.00 in USDC on NEAR, an on-chain receipt anyone can verify, and a signed webhook that tells its server to ship. Sales can be split automatically with collaborators or a DAO, refunds go back in the customer's own coin, and an AI agent can buy from the shop's API the same way. Cascade never holds the shop's money: NEAR Intents delivers it straight to the shop's account, its DAO, or an on-chain split. The same rails let a freelancer invoice a client and a team run payroll after its DAO approves, with no network fees for anyone.
 
-> **Status (2026-11-03):** everything below runs locally against a real NEAR node (the sandbox) and is tested. Nothing is deployed to mainnet yet; NEAR Intents is mocked locally because it has no testnet. The deploy and mainnet test scripts are ready ([runbook](docs/mainnet-runbook.md)). See [What works today](#what-works-today).
+> **Status (2026-11-03):** everything below runs locally against a real NEAR node (the sandbox) and is tested. Deployment plan: all contracts live on **NEAR testnet** with a public demo (the cross-chain swap is simulated there, because NEAR Intents has no testnet), plus a small **mainnet proof** of real 1Click payments (about $3). Deploying the contracts to mainnet would lock ~15-20 NEAR of storage, over this project's hackathon budget. Scripts and steps: [runbook](docs/mainnet-runbook.md). Links will appear under [Proof](#proof).
 
 ## For merchants
 
@@ -73,10 +73,19 @@ pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 8. **AI agent:** an agent pays the shop's API over x402 and gets its data; replaying the same payment is refused.
 9. The accountant's CSV is printed, then 24 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
 
+## Proof
+
+| What | Where | Link |
+| --- | --- | --- |
+| Live demo (shop, checkout, receipts, dashboard) | NEAR testnet | to be added after `pnpm deploy:cascade` + hosting |
+| Contracts (app locked, factory, mock USDC) | NEAR testnet | `deployments/testnet.json` |
+| $1 paid from Base, received as USDC on NEAR via 1Click | Mainnet | to be added (`pnpm spike incoming`) |
+| $1 sent from NEAR back to Base via 1Click | Mainnet | to be added (`pnpm spike outgoing`) |
+
 ## Tests
 
 ```sh
-pnpm test:unit       # 67 TypeScript unit tests (seconds)
+pnpm test:unit       # 68 TypeScript unit tests (seconds)
 pnpm test:sandbox    # 25 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
 pnpm test            # both
 pnpm test:contracts  # 26 Rust unit tests (needs Rust)
@@ -120,12 +129,13 @@ Each safety rule has a test at the contract level (`contracts/app/src/tests.rs`)
 | Relayer (NEP-366) with allowlist and rate limits; settler crank (discovers split payouts) | Done, tested |
 | Checkout API: onboarding, keys, idempotent sessions, expiry, fees, splits, refunds, x402, receipts, webhook log, CSV | Done, unit and sandbox tested |
 | `@cascade/sdk`: server client, webhooks, Pay button, EVM wallet payments, QR payment URIs, x402 guard and client | Done, tested; no runtime dependencies |
-| Web: hosted checkout with QR, public receipt page, merchant dashboard, demo shop, x402 demo API | Working, browser-tested; UI deliberately plain for now |
+| Web: landing page, hosted checkout (steps, fee shown upfront, QR, wallet pay), paper receipt with live checks, merchant dashboard (balance, revenue chart, payments, refunds, webhooks, CSV), demo shop, x402 demo API | Done, browser-tested at desktop and phone widths |
+| Testnet demo mode (`CASCADE_ONECLICK=mock`) and demo-merchant setup script | Done; refused on mainnet (tested) |
 | One-process backend, Dockerfile, Vercel guide | Done; server boot and install path tested ([hosting](docs/hosting.md)) |
 | Deploy and mainnet test scripts | Done; deploy rehearsed on a local node ([runbook](docs/mainnet-runbook.md)) |
 | Solana (Phantom) and NEAR wallet buttons | Not yet: those payers use the QR code or the deposit address |
 | AI assistant on NEAR AI Cloud | Cut |
-| Mainnet deployment and real transactions | Not done; each step needs approval ([spikes](docs/spikes.md)) |
+| Testnet deployment, hosting, mainnet 1Click proof | Ready to run; each step needs approval ([runbook](docs/mainnet-runbook.md)) |
 
 Mainnet transaction links will be listed here once they exist.
 

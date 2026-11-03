@@ -31,6 +31,8 @@ Most of the code was written by Claude Code (Anthropic) working with the team le
 | hono, @hono/node-server | 4.12.34, 2.1.5 | Relayer and checkout API servers |
 | next, react, react-dom | 15.5.28, 19.1.10 | Hosted checkout page and demo shop |
 | qrcode | 1.5.4 | QR codes for wallet payment links |
+| lucide-react | 1.59.0 | Icons |
+| Geist, Geist Mono (via next/font) | | Typeface |
 | vitest, tsx, typescript | 4.1.12, 4.23.15, 5.9.3 | Tests and tooling |
 | Sputnik DAO v2 (wasm) | mainnet code hash 2Zof1Tyy... | Real DAO contract in the sandbox; not modified. See contracts/res/README.md |
 

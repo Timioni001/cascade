@@ -78,6 +78,7 @@ export function apiApp(o: ApiOptions) {
     await next();
   };
   merchant.use("/merchant", auth);
+  merchant.use("/merchant/*", auth);
   merchant.use("/checkout/*", auth);
   merchant.use("/refunds/*", auth);
   merchant.use("/x402/*", auth);
@@ -86,6 +87,12 @@ export function apiApp(o: ApiOptions) {
   merchant.use("/reports/*", auth);
   const me = (ctx: Context) => ctx.get("merchant" as never) as unknown as Awaited<ReturnType<Checkout["authenticate"]>>;
 
+  /** The merchant's USDC balance on NEAR, read from the token contract. */
+  merchant.get("/merchant/balance", async (ctx) => {
+    const m = me(ctx);
+    const token = (await c.reader.config()).token;
+    return ctx.json({ account: m.account, token, usdc: (await c.cfg.chain.ftBalance(token, m.account)).toString() });
+  });
   merchant.get("/merchant", (ctx) => {
     const m = me(ctx);
     return ctx.json({ id: m.id, name: m.name, account: m.account, webhookUrl: m.webhookUrl });

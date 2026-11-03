@@ -26,6 +26,15 @@ describe("server config", () => {
     expect(loadConfig({ ...base, CASCADE_APP_ID: "app2.c.testnet" }, repoWithDeployment()).app).toBe("app2.c.testnet");
   });
 
+  it("testnet demo mode: simulated 1Click with the root as mock USDC minter; never on mainnet", () => {
+    const dir = repoWithDeployment();
+    const c = loadConfig({ ...base, CASCADE_ONECLICK: "mock", CASCADE_ROOT_ID: "c.testnet", CASCADE_ROOT_PRIVATE_KEY: KEY, USDC_CONTRACT_ID: "usdc.c.testnet" }, dir);
+    expect(c.oneclick).toMatchObject({ mode: "mock", minter: { id: "c.testnet" } });
+    expect(loadConfig(base, dir).oneclick).toEqual({ mode: "live" });
+    expect(() => loadConfig({ ...base, NEAR_NETWORK: "mainnet", CASCADE_ONECLICK: "mock", CASCADE_ROOT_PRIVATE_KEY: KEY }, dir)).toThrow(/only allowed on testnet/);
+    expect(() => loadConfig({ ...base, CASCADE_ONECLICK: "maybe" }, dir)).toThrow(/live or mock/);
+  });
+
   it("fails with a clear message when something is missing or wrong", () => {
     expect(() => loadConfig({ ...base, NEAR_NETWORK: "sandbox" }, repoWithDeployment())).toThrow(/mainnet or testnet/);
     expect(() => loadConfig(base, mkdtempSync(join(tmpdir(), "empty-")))).toThrow(/CASCADE_APP_ID.*deploy first/);

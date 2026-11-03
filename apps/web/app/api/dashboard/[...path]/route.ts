@@ -5,7 +5,7 @@
  * and is never stored here.
  */
 const API = process.env.CASCADE_API_URL ?? process.env.NEXT_PUBLIC_CASCADE_API ?? "http://127.0.0.1:8788";
-const ALLOWED = [/^merchant$/, /^checkout\/sessions(\/cs_[A-Za-z0-9]+(\/refunds)?)?$/, /^refunds\/rf_[A-Za-z0-9]+(\/confirm)?$/, /^webhooks(\/evt_[A-Za-z0-9]+\/retry)?$/, /^reports\/ledger\.csv$/];
+const ALLOWED = [/^merchant(\/balance)?$/, /^checkout\/sessions(\/cs_[A-Za-z0-9]+(\/refunds)?)?$/, /^refunds\/rf_[A-Za-z0-9]+(\/confirm)?$/, /^webhooks(\/evt_[A-Za-z0-9]+\/retry)?$/, /^reports\/ledger\.csv$/];
 
 async function forward(req: Request, path: string[]): Promise<Response> {
   const p = path.join("/");

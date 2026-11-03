@@ -11,12 +11,12 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_ACCOUNT_ID, DEFAULT_PRIVATE_KEY, type Sandbox } from "near-sandbox";
 import { KeyPair, actions, type Account, type KeyPairString } from "near-api-js";
 import { MemoryStore } from "@cascade/db";
-import { Checkout, Engine, Refunds, checkoutHooks, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
+import { Checkout, Engine, Refunds, checkoutHooks, mintingDriver, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { apiApp } from "@cascade/api";
 import { Chain, ftCalls, type TxResult } from "@cascade/near";
-import { MockOneClick, type MockDriver } from "@cascade/oneclick";
+import { MockOneClick } from "@cascade/oneclick";
 import { daoInitArgs, payrollPolicy } from "@cascade/sputnik";
 import { Relayer } from "@cascade/relayer";
 import { Settler, nearSettlerChain } from "@cascade/settler";
@@ -125,16 +125,8 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
 
   const store = new MemoryStore();
   const usdcBalance = (a: string) => chain.ftBalance(ids.usdc, a);
-  const driver: MockDriver = {
-    // Like 1Click: a plain transfer, or with customRecipientMsg an ft_transfer_call (used for revenue splits).
-    deliverUsdc: async (recipient, amount, msg) => {
-      if (msg === undefined) return expectOk(await chain.send(solver, ftCalls(ids.usdc).mint(recipient, amount)), "solver delivery").hash;
-      expectOk(await chain.send(solver, ftCalls(ids.usdc).mint(ids.solver, amount)), "solver mint");
-      const call = { receiverId: ids.usdc, label: "deliver with msg", actions: [actions.functionCall("ft_transfer_call", { receiver_id: recipient, amount: amount.toString(), msg }, 100n * 10n ** 12n, 1n)] };
-      return expectOk(await chain.send(solver, call), "solver delivery (ft_transfer_call)").hash;
-    },
-    usdcBalance,
-  };
+  // The solver account mints mock USDC where 1Click would deliver real USDC.
+  const driver = mintingDriver(chain, solver, ids.usdc);
   // `authenticated: true` = behave as if a 1Click partner JWT is configured,
   // which is what enables Confidential Intents for private lines.
   const oneclick = new MockOneClick({ driver, authenticated: true, seed: `demo-${Date.now()}` });

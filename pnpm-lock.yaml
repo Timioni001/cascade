@@ -65,6 +65,9 @@ importers:
       '@cascade/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      lucide-react:
+        specifier: 1.59.0
+        version: 1.59.0(@types/react@19.1.17)(react@19.1.10)
       next:
         specifier: 15.5.28
         version: 15.5.28(@types/node@22.20.5)(react-dom@19.1.10(react@19.1.10))(react@19.1.10)
@@ -1207,6 +1210,15 @@ packages:
   lowercase-keys@2.0.0:
     resolution: {integrity: sha512-tqNXrS78oMOE73NMxK4EMLQsQowWf8jKooH9g7xPavRT706R6bkQJ6DY2Te7QukaZsulxa30wQ7bk0pm4XiHmA==}
     engines: {node: '>=8'}
+
+  lucide-react@1.59.0:
+    resolution: {integrity: sha512-5qgMyyCPU6OvnKpLS2t693+ZtiqA8oaSweWoUows0BLFKFf6V75m4+CptpmohZHpD5IuOVIBXHBBiv2vpLJmtw==}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -2423,6 +2435,12 @@ snapshots:
       p-locate: 4.1.0
 
   lowercase-keys@2.0.0: {}
+
+  lucide-react@1.59.0(@types/react@19.1.17)(react@19.1.10):
+    dependencies:
+      react: 19.1.10
+    optionalDependencies:
+      '@types/react': 19.1.17
 
   magic-string@0.30.21:
     dependencies:
