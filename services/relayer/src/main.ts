@@ -16,6 +16,7 @@ const relayer = new Relayer({
   app: need("CASCADE_APP_ID"),
   usdc: need("USDC_CONTRACT_ID"),
   factory: need("CASCADE_FACTORY_ID"),
+  daoFactory: process.env.SPUTNIK_FACTORY_ID ?? "sputnik-dao.near",
 });
 const port = Number(process.env.RELAYER_PORT ?? 8787);
 serve({ fetch: relayerApp(relayer, { trustProxy: process.env.TRUST_PROXY === "1" }).fetch, port });

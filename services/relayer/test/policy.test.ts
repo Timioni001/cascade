@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DelegateSummary } from "@cascade/near";
+import { fundBatchProposal, registerOwnerProposal } from "@cascade/sputnik";
 import { checkDelegate, RateLimiter, type RelayPolicyConfig } from "../src/index.js";
 
 const T = 10n ** 12n;
@@ -9,6 +10,7 @@ const cfg: RelayPolicyConfig = {
   maxGas: 300n * T,
   maxTotalGas: 300n * T,
   isRegisteredDao: async (a) => a === "studio.sputnik-dao.near",
+  daoFactory: "sputnik-dao.near",
 };
 const d = (receiverId: string, calls: DelegateSummary["calls"], otherActions: string[] = []): DelegateSummary => ({
   senderId: "ada.cascade.near", receiverId, maxBlockHeight: 100n, publicKey: "ed25519:x", calls, otherActions,
@@ -35,6 +37,17 @@ describe("relay policy", () => {
     expect((await checkDelegate(d("studio.sputnik-dao.near", [call("add_proposal", {}, 10n ** 23n)]), cfg)).ok).toBe(false);
     expect((await checkDelegate(d("studio.sputnik-dao.near", [call("change_policy")]), cfg)).ok).toBe(false);
     expect((await checkDelegate(d("random.sputnik-dao.near", [call("act_proposal")]), cfg)).ok).toBe(false);
+  });
+
+  it("onboards an unregistered DAO: only its register_owner proposal and votes", async () => {
+    const reg = registerOwnerProposal(cfg.app, ["ada.near"]);
+    const newDao = "newteam.sputnik-dao.near";
+    expect(await checkDelegate(d(newDao, [call("add_proposal", { proposal: reg })]), cfg)).toEqual({ ok: true, kind: "dao-onboarding" });
+    expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 0, action: "VoteApprove", proposal: reg.kind })]), cfg)).ok).toBe(true);
+    const other = fundBatchProposal({ usdc: cfg.usdc, cascade: cfg.app, batch: { id: 1, hash: "h", total: "1", line_count: 1 } });
+    expect((await checkDelegate(d(newDao, [call("add_proposal", { proposal: other })]), cfg)).ok).toBe(false);
+    expect((await checkDelegate(d(newDao, [call("act_proposal", { id: 0, action: "VoteApprove", proposal: other.kind })]), cfg)).ok).toBe(false);
+    expect((await checkDelegate(d("notadao.near", [call("add_proposal", { proposal: reg })]), cfg)).ok).toBe(false);
   });
 
   it("refuses anything that is not a function call, unknown receivers and gas bombs", async () => {

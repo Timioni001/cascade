@@ -13,6 +13,8 @@ export interface RelayerDeps {
   app: string;
   usdc: string;
   factory: string;
+  /** Sputnik DAO factory, e.g. sputnik-dao.near */
+  daoFactory: string;
   limits?: Partial<typeof DEFAULT_LIMITS>;
   limiter?: RateLimiter;
   /** Optional human check for sign-ups (e.g. Cloudflare Turnstile). */
@@ -54,6 +56,7 @@ export class Relayer {
       usdc: d.usdc,
       maxGas: 300n * 10n ** 12n,
       maxTotalGas: 300n * 10n ** 12n,
+      daoFactory: d.daoFactory,
       isRegisteredDao: async (acct) => {
         const hit = this.daoCache.get(acct);
         if (hit !== undefined) return hit;
@@ -80,7 +83,7 @@ export class Relayer {
     if (!v.ok) throw new RelayError(403, v.reason);
     this.limit(`ip:${ctx.ip}`, this.limits.relayPerIp, "requests from this address");
     this.limit(`acct:${decoded.summary.senderId}`, this.limits.relayPerAccount, "requests for this account");
-    return this.d.chain.send(this.d.payer, relayCall(decoded.raw));
+    return this.d.chain.send(this.d.payer, relayCall(decoded.raw), { target: decoded.summary.receiverId });
   }
 
   async createName(req: { name: string; publicKey: string; appKey?: string }, ctx: RelayContext): Promise<TxResult<boolean> & { accountId: string }> {

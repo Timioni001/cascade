@@ -25,6 +25,14 @@
     "near-sandbox": "0.3.4",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "@cascade/core": "workspace:*",
+    "@cascade/db": "workspace:*",
+    "@cascade/engine": "workspace:*",
+    "@cascade/near": "workspace:*",
+    "@cascade/oneclick": "workspace:*",
+    "@cascade/sputnik": "workspace:*",
+    "@cascade/relayer": "workspace:*",
+    "@cascade/settler": "workspace:*"
   }
 }

@@ -140,14 +140,21 @@ impl Cascade {
         dao_factory: AccountId,
         storage_deposit: Option<U128>,
     ) -> Self {
+        let deposit = NearToken::from_yoctonear(storage_deposit.map(|v| v.0).unwrap_or(DEFAULT_STORAGE_DEPOSIT));
+        // This contract must itself be registered with the token, or every
+        // ft_transfer_call that funds a batch fails. Do it here so no
+        // deployment can forget it.
+        ext_ft::ext(token.clone())
+            .with_attached_deposit(deposit)
+            .with_static_gas(GAS_STORAGE_DEPOSIT)
+            .storage_deposit(Some(env::current_account_id()), Some(true))
+            .detach();
         Self {
             admin,
             settler,
             token,
             dao_factory,
-            storage_deposit: NearToken::from_yoctonear(
-                storage_deposit.map(|v| v.0).unwrap_or(DEFAULT_STORAGE_DEPOSIT),
-            ),
+            storage_deposit: deposit,
             owners: LookupMap::new(Key::Owners),
             invoices: LookupMap::new(Key::Invoices),
             batches: LookupMap::new(Key::Batches),

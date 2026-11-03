@@ -17,6 +17,7 @@
     "@cascade/near": "workspace:*",
     "hono": "4.12.34",
     "@hono/node-server": "2.1.5",
-    "near-api-js": "7.4.0"
+    "near-api-js": "7.4.0",
+    "@cascade/sputnik": "workspace:*"
   }
 }

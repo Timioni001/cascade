@@ -16,6 +16,8 @@ export interface RelayPolicyConfig {
   maxTotalGas: bigint;
   /** Is `account` registered with Cascade as a DAO owner? */
   isRegisteredDao: (account: string) => Promise<boolean>;
+  /** Sputnik factory account, e.g. sputnik-dao.near. DAOs are its sub-accounts. */
+  daoFactory: string;
 }
 
 /** Methods on the app contract a user may call through the relayer. */
@@ -32,7 +34,20 @@ export const APP_METHODS = new Set([
 
 export const DAO_METHODS = new Set(["add_proposal", "act_proposal"]);
 
-export type Verdict = { ok: true; kind: "app" | "fund" | "dao" } | { ok: false; reason: string };
+export type Verdict = { ok: true; kind: "app" | "fund" | "dao" | "dao-onboarding" } | { ok: false; reason: string };
+
+type FcKind = { FunctionCall?: { receiver_id?: string; actions?: { method_name?: string; deposit?: string }[] } };
+
+/** Is this proposal kind exactly "call app.register_owner, nothing else"? */
+export function isRegistrationKind(kind: unknown, app: string): boolean {
+  const fc = (kind as FcKind | undefined)?.FunctionCall;
+  return (
+    fc?.receiver_id === app &&
+    fc.actions?.length === 1 &&
+    fc.actions[0]?.method_name === "register_owner" &&
+    (fc.actions[0]?.deposit ?? "0") === "0"
+  );
+}
 
 export async function checkDelegate(d: DelegateSummary, cfg: RelayPolicyConfig): Promise<Verdict> {
   if (d.otherActions.length > 0) return { ok: false, reason: `only function calls are relayed (got ${d.otherActions.join(", ")})` };
@@ -71,6 +86,21 @@ export async function checkDelegate(d: DelegateSummary, cfg: RelayPolicyConfig):
       if (c.deposit !== 0n) return { ok: false, reason: "DAO calls are relayed only with a zero bond" };
     }
     return { ok: true, kind: "dao" };
+  }
+
+  // A Sputnik DAO that has not joined yet: the only thing we pay for is the
+  // proposal (and votes) to register it with Cascade. Sputnik v2 checks that
+  // the `proposal` kind passed to act_proposal matches the stored proposal,
+  // so a vote cannot claim to be about registration when it is not.
+  if (d.receiverId.endsWith(`.${cfg.daoFactory}`)) {
+    for (const c of d.calls) {
+      const a = c.args as { proposal?: { kind?: unknown } | unknown } | undefined;
+      if (c.deposit !== 0n) return { ok: false, reason: "DAO calls are relayed only with a zero bond" };
+      if (c.method === "add_proposal" && isRegistrationKind((a?.proposal as { kind?: unknown } | undefined)?.kind, cfg.app)) continue;
+      if (c.method === "act_proposal" && isRegistrationKind(a?.proposal, cfg.app)) continue;
+      return { ok: false, reason: "this DAO is not registered with Cascade yet; only its registration proposal is relayed" };
+    }
+    return { ok: true, kind: "dao-onboarding" };
   }
 
   return { ok: false, reason: `receiver ${d.receiverId} is not Cascade, USDC or a registered DAO` };

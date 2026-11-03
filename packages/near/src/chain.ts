@@ -24,7 +24,7 @@ type Outcome = {
   transaction: { hash: string };
   status: { SuccessValue?: string; Failure?: unknown } | string;
   transaction_outcome: { outcome: { logs: string[] } };
-  receipts_outcome: { outcome: { logs: string[]; status: { SuccessValue?: string; Failure?: unknown } | string } }[];
+  receipts_outcome: { outcome: { logs: string[]; executor_id: string; status: { SuccessValue?: string; Failure?: unknown } | string } }[];
 };
 
 function decodeValue(v: string | undefined): unknown {
@@ -37,7 +37,14 @@ function decodeValue(v: string | undefined): unknown {
   }
 }
 
-export function parseOutcome<T>(o: Outcome): TxResult<T> {
+/**
+ * @param target For meta-transactions the outer transaction only runs the
+ * delegate action, so its own status says nothing about the user's call.
+ * Pass the inner receiver: success then means that contract's first receipt
+ * did not fail, and the value is the last value that contract returned
+ * (which follows promise chains like ft_transfer_call -> ft_resolve_transfer).
+ */
+export function parseOutcome<T>(o: Outcome, target?: string): TxResult<T> {
   const logs = [...o.transaction_outcome.outcome.logs, ...o.receipts_outcome.flatMap((r) => r.outcome.logs)];
   const events: CascadeEvent[] = [];
   for (const l of logs) {
@@ -52,10 +59,19 @@ export function parseOutcome<T>(o: Outcome): TxResult<T> {
     .map((r) => (typeof r.outcome.status === "object" ? r.outcome.status.Failure : undefined))
     .find((f) => f !== undefined);
   const top = typeof o.status === "object" ? o.status : {};
+  let ok = top.Failure === undefined;
+  let value = decodeValue(top.SuccessValue);
+  if (target) {
+    const mine = o.receipts_outcome.filter((r) => r.outcome.executor_id === target);
+    const first = mine[0]?.outcome.status;
+    ok = ok && mine.length > 0 && !(typeof first === "object" && first.Failure !== undefined);
+    const vals = mine.map((r) => (typeof r.outcome.status === "object" ? r.outcome.status.SuccessValue : undefined)).filter((v) => v);
+    value = decodeValue(vals.at(-1));
+  }
   return {
     hash: o.transaction.hash,
-    ok: top.Failure === undefined,
-    value: decodeValue(top.SuccessValue) as T | undefined,
+    ok,
+    value: value as T | undefined,
     events,
     logs,
     ...(failure !== undefined ? { error: JSON.stringify(failure) } : {}),
@@ -84,14 +100,14 @@ export class Chain {
   }
 
   /** Send a call from a full-access (or matching function-call) key. Never throws on contract failure: check `ok`. */
-  async send<T = unknown>(account: Account, call: Call): Promise<TxResult<T>> {
+  async send<T = unknown>(account: Account, call: Call, opts: { target?: string } = {}): Promise<TxResult<T>> {
     const r = await account.signAndSendTransaction({
       receiverId: call.receiverId,
       actions: call.actions,
       waitUntil: "FINAL",
       throwOnFailure: false,
     });
-    return parseOutcome<T>(r as unknown as Outcome);
+    return parseOutcome<T>(r as unknown as Outcome, opts.target);
   }
 
   async txStatus(hash: string, sender: string): Promise<TxResult> {

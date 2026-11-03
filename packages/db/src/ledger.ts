@@ -1,4 +1,4 @@
-import { formatUsd } from "@cascade/core";
+import { assetSymbol, formatUsd } from "@cascade/core";
 import { plainStatus } from "@cascade/oneclick";
 import type { Batch, Line } from "@cascade/core";
 import type { Store } from "./records.js";
@@ -33,6 +33,8 @@ export const LEDGER_COLUMNS: (keyof LedgerRow)[] = [
 ];
 
 const usd = (s: string | undefined) => (s ? Number(s).toFixed(2) : "");
+/** USDC base units -> dollars rounded to cents, for the USD columns. */
+const cents = (units: string | bigint) => (Number(BigInt(units)) / 1e6).toFixed(2);
 
 export interface ChainLineSource {
   batch(id: number): Promise<Batch | null>;
@@ -58,7 +60,7 @@ export async function ledgerRows(store: Store, owner: string, opts: { month?: st
       gross_usd: usd(q.amountInUsd),
       fee_usd: (gross - Number(formatUsd(net))).toFixed(2),
       net_usdc: formatUsd(net),
-      paid_with: `${q.amountInFormatted} ${p.quote.quoteRequest.originAsset.split(":").pop()} on ${p.originChain}`,
+      paid_with: `${q.amountInFormatted} ${assetSymbol(p.quote.quoteRequest.originAsset)} on ${p.originChain}`,
       rate,
       origin_chain: p.originChain,
       destination_chain: "near",
@@ -84,7 +86,7 @@ export async function ledgerRows(store: Store, owner: string, opts: { month?: st
         counterparty: l.name,
         reference: `${b.ownerKind === "Dao" ? "Payroll" : "Batch"} #${b.id} line ${i + 1}`,
         status,
-        gross_usd: formatUsd(sent),
+        gross_usd: cents(sent),
         fee_usd: (Number(formatUsd(sent)) - Number(formatUsd(l.amount))).toFixed(2),
         net_usdc: formatUsd(l.amount),
         paid_with: `${formatUsd(sent)} USDC on near`,

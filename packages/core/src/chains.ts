@@ -60,3 +60,19 @@ export function parseDest(dest: string): { chain: string; address: string } | nu
   if (i <= 0) return null;
   return { chain: dest.slice(0, i), address: dest.slice(i + 1) };
 }
+
+const NATIVE: Record<string, string> = {
+  "nep141:base.omft.near": "ETH",
+  "nep141:eth.omft.near": "ETH",
+  "nep141:arb.omft.near": "ETH",
+  "nep141:sol.omft.near": "SOL",
+  "nep141:btc.omft.near": "BTC",
+  "nep141:wrap.near": "wNEAR",
+};
+
+/** "nep141:sol.omft.near" -> "SOL"; USDC on any chain -> "USDC"; unknown ids pass through. */
+export function assetSymbol(assetId: string): string {
+  if (NATIVE[assetId]) return NATIVE[assetId]!;
+  if (Object.values(USDC_BY_CHAIN).includes(assetId)) return "USDC";
+  return assetId;
+}
