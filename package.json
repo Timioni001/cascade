@@ -35,5 +35,10 @@
     "@cascade/sputnik": "workspace:*",
     "@cascade/relayer": "workspace:*",
     "@cascade/settler": "workspace:*"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
