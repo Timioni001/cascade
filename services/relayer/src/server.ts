@@ -1,9 +1,12 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { RelayError, type Relayer } from "./relayer.js";
 
 /** HTTP surface: POST /relay, POST /names, GET /health. */
-export function relayerApp(relayer: Relayer, opts: { trustProxy?: boolean } = {}) {
+export function relayerApp(relayer: Relayer, opts: { trustProxy?: boolean; allowOrigins?: string[] } = {}) {
   const app = new Hono();
+  // The web app calls the relayer from the browser (sign-up, fee-free actions).
+  if (opts.allowOrigins?.length) app.use("*", cors({ origin: opts.allowOrigins, allowMethods: ["GET", "POST"], allowHeaders: ["content-type"] }));
   const ipOf = (c: { req: { header: (k: string) => string | undefined } }) =>
     (opts.trustProxy ? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined) ?? c.req.header("x-real-ip") ?? "local";
 

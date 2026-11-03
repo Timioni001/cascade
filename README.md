@@ -121,14 +121,15 @@ Our servers can delay things and the settler can wrongly mark an invoice paid, b
 
 `pnpm deploy:cascade` and `pnpm spike <name>` run from your machine with keys in `.env`; every transaction is shown and needs a typed `yes`. The app contract is deployed **locked** (no access keys), so nobody can change it or move its funds. Step by step: [docs/mainnet-runbook.md](docs/mainnet-runbook.md). The deploy script itself is tested against a local node (`contracts/tests/deploy.test.ts`).
 
-## Running the services
+## Running the backend
+
+After deploying, one process serves everything: the checkout API (`/v1`), the relayer (`/relayer`) and the settler loop. Contract ids come from `deployments/<network>.json`, secrets from `.env`.
 
 ```sh
-cp .env.example .env   # fill in accounts and keys; never commit .env
-pnpm relayer           # POST /relay, POST /names
-pnpm settler           # polls 1Click and the contract
-pnpm --filter @cascade/api start   # checkout API
+pnpm backend              # or: docker compose up -d
 ```
+
+Hosting the backend (Docker) and the web app (Vercel): [docs/hosting.md](docs/hosting.md).
 
 ## Documentation
 

@@ -1,0 +1,12 @@
+# docker compose up -d   (reads secrets from .env; see docs/hosting.md)
+services:
+  cascade:
+    build: .
+    env_file: .env
+    ports:
+      - "8788:8788"
+    volumes:
+      - cascade-data:/data
+    restart: unless-stopped
+volumes:
+  cascade-data:

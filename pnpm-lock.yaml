@@ -217,6 +217,39 @@ importers:
         specifier: 7.4.0
         version: 7.4.0
 
+  services/server:
+    dependencies:
+      '@cascade/api':
+        specifier: workspace:*
+        version: link:../api
+      '@cascade/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@cascade/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../../packages/near
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../../packages/oneclick
+      '@cascade/relayer':
+        specifier: workspace:*
+        version: link:../relayer
+      '@cascade/settler':
+        specifier: workspace:*
+        version: link:../settler
+      '@hono/node-server':
+        specifier: 2.1.5
+        version: 2.1.5(hono@4.12.34)
+      hono:
+        specifier: 4.12.34
+        version: 4.12.34
+      near-api-js:
+        specifier: 7.4.0
+        version: 7.4.0
+
   services/settler:
     dependencies:
       '@cascade/core':
