@@ -12,11 +12,14 @@ export interface SettlerChain {
   lines(id: number): Promise<Line[]>;
   executeBatch(id: number, limit: number): Promise<TxResult>;
   refundFailed(id: number): Promise<TxResult>;
+  /** The contract's next batch id: batches below it exist. */
+  nextBatchId(): Promise<number>;
 }
 
 export type SettlerEvent =
   | { type: "status"; depositAddress: string; direction: "in" | "out"; from: string; to: string }
   | { type: "recorded"; depositAddress: string; invoiceId: number | null; tx: string }
+  | { type: "discovered"; batchId: number }
   | { type: "executed"; batchId: number; tx: string }
   | { type: "refunded"; batchId: number; tx: string }
   | { type: "error"; where: string; message: string };
@@ -138,7 +141,31 @@ export class Settler {
     }
   }
 
+  /** Next on-chain batch id not yet looked at (in memory: a restart rescans, which is harmless). */
+  private scanned = 0;
+
+  /**
+   * Find funded batches nobody told us about: revenue splits create their
+   * payout batch inside the contract when the money arrives.
+   */
+  async discoverBatches() {
+    const next = await this.o.chain.nextBatchId();
+    for (; this.scanned < next; this.scanned++) {
+      const id = this.scanned;
+      if (await this.o.store.getBatch(id)) continue;
+      const b = await this.o.chain.batch(id);
+      if (!b || (b.status !== "Funded" && b.status !== "Executing")) continue;
+      const lines = await this.o.chain.lines(id);
+      await this.o.store.putBatch({
+        id, owner: b.owner, ownerKind: "Account", title: `On-chain batch #${id}`, proposalId: null, approvers: [], createdAt: new Date(b.created_at_ms).toISOString(),
+        lines: lines.map((l) => ({ name: l.recipient, chain: "near", address: l.recipient, amount: l.amount, private: false, depositAddress: null })),
+      });
+      this.emit({ type: "discovered", batchId: id });
+    }
+  }
+
   async crankBatches() {
+    await this.discoverBatches();
     for (const doc of await this.o.store.listBatches()) {
       const b = await this.o.chain.batch(doc.id);
       if (!b || (b.status !== "Funded" && b.status !== "Executing")) continue;

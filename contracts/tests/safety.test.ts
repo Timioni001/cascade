@@ -28,7 +28,7 @@ beforeAll(async () => {
   w = await createWorld();
   personal = await personalFlow(w);
   team = await teamFlow(w, personal.ada);
-  shop = await checkoutFlow(w, silent);
+  shop = await checkoutFlow(w, silent, { dao: team.dao });
 });
 
 afterAll(async () => {
@@ -209,6 +209,38 @@ describe("checkout (merchant API + SDK + webhooks, real chain)", () => {
     expect(shop.receiptHashMatches).toBe(true);
     expect(shop.webhook?.type).toBe("checkout.session.completed");
     expect(shop.webhookRejectedForgery).toBe(true);
+  });
+
+  it("a split payment is divided on arrival and paid out exactly, including to a DAO", () => {
+    expect(shop.split.paid).toBe(true);
+    shop.split.rule.shares.forEach((x, i) => expect(shop.split.received[x.account]).toBe(shop.split.expected[i]));
+    expect(shop.split.rule.shares.map((x) => x.account)).toContain(team.dao);
+  });
+
+  it("a refund reaches the customer on their chain and notifies the merchant", () => {
+    expect(shop.refund).toMatchObject({ status: "succeeded", amount: "10000000", webhookType: "refund.succeeded" });
+    expect(shop.refund.destTx).toBeTruthy();
+  });
+
+  it("an agent pays over x402 once and cannot replay it", () => {
+    expect(shop.agent.status).toBe(200);
+    expect(shop.agent.settlement?.success).toBe(true);
+    expect(shop.agent.replayStatus).toBe(402);
+    expect(shop.agent.replayReason).toBe("already_used");
+  });
+
+  it("the contract refunds payments to an unknown split in full, and splits valid ones exactly", async () => {
+    const payer = await funded("split-payer", "10");
+    const before = await w.usdcBalance(payer.id);
+    const bad = await payer.gaslessFull(ftCalls(ids.usdc).payToSplit(ids.app, parseUsd("1"), 999));
+    expect(bad.value).toBe("0"); // ft_transfer_call reports 0 used: everything came back
+    expect(await w.usdcBalance(payer.id)).toBe(before);
+    const n0 = (await w.engine.reader.config()).next_batch_id;
+    const ok = await payer.gaslessFull(ftCalls(ids.usdc).payToSplit(ids.app, parseUsd("1"), shop.split.rule.id));
+    expect(ok.value).toBe("1000000");
+    const b = (await w.engine.reader.batch(n0))!;
+    expect(b).toMatchObject({ status: "Funded", owner: shop.split.rule.owner, total: "1000000" });
+    expect((await w.engine.reader.lines(n0)).map((l) => l.amount)).toEqual(["800000", "150000", "50000"]);
   });
 
   async function onboardWith(account: string, signer: { signNep413Message: (a: { message: string; recipient: string; nonce: Uint8Array }) => Promise<{ publicKey: { toString(): string }; signature: Uint8Array }> }, signerId = account) {

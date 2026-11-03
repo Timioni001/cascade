@@ -32,6 +32,7 @@ export const APP_METHODS = new Set([
   "set_batch_proposal",
   "execute_batch",
   "refund_failed",
+  "create_split",
 ]);
 
 export const DAO_METHODS = new Set(["add_proposal", "act_proposal"]);

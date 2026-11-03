@@ -28,7 +28,8 @@ const NEAR = 10n ** 24n;
 const TGAS = 10n ** 12n;
 
 export const FUNDING = {
-  app: 3n * NEAR, // contract storage (~0.35 MB) + USDC registrations it pays for when executing batches
+  /** Headroom on top of the code's storage: state growth and USDC registrations paid while executing batches. */
+  appHeadroom: 2n * NEAR,
   relayer: 3n * NEAR,
   settler: 1n * NEAR,
   mockUsdc: 3n * NEAR,
@@ -48,6 +49,16 @@ function bs58(bytes: Uint8Array): string {
     s = "1" + s;
   }
   return s;
+}
+
+/** NEAR storage staking: 10^19 yoctoNEAR per byte (1 NEAR per 100 kB). */
+export function storageCost(bytes: number): bigint {
+  return BigInt(bytes) * 10n ** 19n;
+}
+
+/** What the app account is funded with: its code's storage plus headroom. */
+export function appFunding(wasmBytes: number): bigint {
+  return storageCost(wasmBytes) + FUNDING.appHeadroom;
 }
 
 /** NEAR's code_hash: base58(sha256(wasm)). */
@@ -205,9 +216,9 @@ export async function deployCascade(cfg: NetConfig, io: Io, opts: DeployOptions)
     const appInit = { admin: cfg.root.id, settler: cfg.settler.id, token: usdc, dao_factory: cfg.daoFactory };
     if (!appView) {
       await send(root, "create, deploy and init app (locked: no access key)", cfg.app, [
-        actions.createAccount(), actions.transfer(FUNDING.app), actions.deployContract(appWasm),
+        actions.createAccount(), actions.transfer(appFunding(appWasm.length)), actions.deployContract(appWasm),
         actions.functionCall("new", appInit, 100n * TGAS, 0n),
-      ], FUNDING.app, ["no access key is added: the contract can never be changed or drained by anyone"]);
+      ], appFunding(appWasm.length), ["no access key is added: the contract can never be changed or drained by anyone"]);
     } else if (appView.code_hash === hashes.app) {
       io.log("already deployed with this exact code");
     } else {

@@ -14,5 +14,6 @@ export function nearSettlerChain(chain: Chain, settler: Account, app: string): S
     lines: (id) => read.lines(id),
     executeBatch: (id, limit) => chain.send(settler, calls.executeBatch(id, limit)),
     refundFailed: (id) => chain.send(settler, calls.refundFailed(id)),
+    nextBatchId: async () => (await read.config()).next_batch_id,
   };
 }

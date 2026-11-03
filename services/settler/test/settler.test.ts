@@ -44,6 +44,10 @@ class FakeChain implements SettlerChain {
     b.status = "Executing";
     return ok(`tx-exec-${id}`);
   }
+  /** Batches the contract created on its own (e.g. revenue splits) are found by scanning ids. */
+  async nextBatchId() {
+    return this.batches.size;
+  }
   async refundFailed(id: number) {
     this.calls.push(`refund:${id}`);
     const b = this.batches.get(id)!;
@@ -149,5 +153,21 @@ describe("settler: batches", () => {
     const rec = (await s.store.getPayment(dep))!;
     expect(rec.status).toBe("SUCCESS");
     expect(rec.destTx).toMatch(/^0x/);
+  });
+});
+
+describe("settler: discovery", () => {
+  it("finds a funded batch the store never heard of (a revenue split payout) and pays it", async () => {
+    const s = setup();
+    const lines: Line[] = [{ recipient: "illustrator.near", amount: "15", kind: "Near", dest: null, deadline_ms: null, status: "Queued", note: null }];
+    s.chain.lineMap.set(0, lines);
+    s.chain.batches.set(0, {
+      id: 0, owner: "shop.near", hash: "h", total: "15", line_count: 1, status: "Funded", cursor: 0, proposal_id: null, created_by: "intents.near", created_at_ms: 0,
+      buckets: { queued: "15", in_flight: "0", sent: "0", failed: "0", refunding: "0", refunded: "0" },
+    });
+    const ev = await s.settler.tick();
+    expect(ev.map((e) => e.type)).toEqual(["discovered", "executed"]);
+    expect((await s.store.getBatch(0))!.owner).toBe("shop.near");
+    expect(await s.settler.tick()).toEqual([]); // not discovered twice, nothing left to do
   });
 });

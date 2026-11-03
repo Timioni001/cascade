@@ -63,6 +63,9 @@ class FakeSettlerChain implements SettlerChain {
   async executeBatch() {
     return ok("exec");
   }
+  async nextBatchId() {
+    return 0;
+  }
   async refundFailed() {
     return ok("refund");
   }

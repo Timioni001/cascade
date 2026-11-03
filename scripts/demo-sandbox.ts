@@ -50,9 +50,9 @@ let exit = 0;
 try {
   const p = await personalFlow(world, narrator);
   const t = await teamFlow(world, p.ada, narrator);
-  const k = await checkoutFlow(world, narrator);
+  const k = await checkoutFlow(world, narrator, { dao: t.dao });
 
-  console.log(`\n${bold("18. The accountant's CSV (Ada, then the studio)")}`);
+  console.log(`\n${bold("21. The accountant's CSV (Ada, then the studio)")}`);
   for (const csv of [p.csv, t.csv]) {
     for (const row of csv.trim().split("\r\n")) console.log(`  ${dim(row.length > 160 ? row.slice(0, 157) + "..." : row)}`);
     console.log("");
@@ -78,6 +78,11 @@ try {
   check(k.receipt?.source === "Link" && k.receiptHashMatches, "on-chain receipt is bound to the session by hash");
   check(k.webhook?.type === "checkout.session.completed" && k.webhook.data.session.reference === "order-1001", "merchant verified a signed checkout.session.completed webhook");
   check(k.webhookRejectedForgery, "a forged webhook was rejected by the merchant's SDK check");
+  check(k.split.paid && k.split.rule.shares.every((x, i) => k.split.received[x.account] === k.split.expected[i]), "the split paid 80/15/5 exactly, on arrival, with no signatures");
+  check(k.split.expected.reduce((a, b) => a + b, 0n) === 25_000_000n, "split parts add up to the payment");
+  check(k.refund.status === "succeeded" && k.refund.amount === "10000000" && k.refund.webhookType === "refund.succeeded", "a $10 refund reached the customer in ETH on Base, and the shop got refund.succeeded");
+  check(k.agent.status === 200 && k.agent.settlement?.success === true, "an AI agent paid over x402 and got its data");
+  check(k.agent.replayStatus === 402 && k.agent.replayReason === "already_used", "replaying the agent's payment does not unlock a second response");
 } catch (e) {
   exit = 1;
   console.error(red(`\nDemo failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`));
