@@ -54,7 +54,18 @@ enum Key {
     Batches,
     Lines,
     PaidDeposits,
+    Splits,
 }
+
+/// `msg` for paying into a revenue split.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+pub struct SplitMsg {
+    pub split: u64,
+}
+
+/// Smallest payment a split accepts (0.01 USDC): stops dust from filling storage.
+pub const MIN_SPLIT_PAYMENT: u128 = 10_000;
 
 /// The `msg` the owner (or DAO) passes to `usdc.ft_transfer_call` to fund a batch.
 #[derive(Serialize, Deserialize, Debug)]
@@ -74,6 +85,7 @@ pub struct Config {
     pub storage_deposit: U128,
     pub next_invoice_id: u64,
     pub next_batch_id: u64,
+    pub next_split_id: u64,
 }
 
 #[near(serializers = [json])]
@@ -98,8 +110,10 @@ pub struct Cascade {
     /// Every 1Click deposit address already recorded as paid. The settler
     /// cannot record the same incoming payment twice.
     paid_deposits: LookupSet<String>,
+    splits: LookupMap<u64, SplitRule>,
     next_invoice_id: u64,
     next_batch_id: u64,
+    next_split_id: u64,
 }
 
 /// SHA-256 over the Borsh encoding of the lines, as lowercase hex.
@@ -160,8 +174,10 @@ impl Cascade {
             batches: LookupMap::new(Key::Batches),
             lines: LookupMap::new(Key::Lines),
             paid_deposits: LookupSet::new(Key::PaidDeposits),
+            splits: LookupMap::new(Key::Splits),
             next_invoice_id: 0,
             next_batch_id: 0,
+            next_split_id: 0,
         }
     }
 
@@ -346,9 +362,16 @@ impl Cascade {
         self.batches.insert(id, b);
     }
 
-    /// NEP-141 receiver. Accepts a batch's funding only if it comes from the
+    /// NEP-141 receiver. Two kinds of `msg`:
+    ///
+    /// `{"batch_id", "hash"}`: funding a batch. Accepted only from the
     /// configured token, from the batch owner, for exactly the batch total,
-    /// with the matching hash. In every other case it returns all the tokens.
+    /// with the matching hash. Anything else is returned in full.
+    ///
+    /// `{"split": id}`: a payment into a revenue split (anyone may pay, e.g.
+    /// NEAR Intents delivering a checkout payment). The amount is divided by
+    /// the split's shares into a new batch that is funded at once; the
+    /// settler (or anyone) then pays it out like any other batch.
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
         let reject = |why: &str| {
             emit("fund_rejected", near_sdk::serde_json::json!({ "sender": sender_id, "amount": amount, "reason": why }));
@@ -356,6 +379,9 @@ impl Cascade {
         };
         if env::predecessor_account_id() != self.token {
             return reject("wrong token");
+        }
+        if let Ok(m) = near_sdk::serde_json::from_str::<SplitMsg>(&msg) {
+            return self.receive_split(sender_id, amount, m.split);
         }
         let Ok(m) = near_sdk::serde_json::from_str::<FundMsg>(&msg) else {
             return reject("bad msg");
@@ -379,6 +405,57 @@ impl Cascade {
         self.batches.insert(m.batch_id, b);
         emit("batch_funded", near_sdk::serde_json::json!({ "id": m.batch_id, "amount": amount }));
         PromiseOrValue::Value(U128(0))
+    }
+
+    fn receive_split(&mut self, sender_id: AccountId, amount: U128, split_id: u64) -> PromiseOrValue<U128> {
+        let Some(rule) = self.splits.get(&split_id).cloned() else {
+            emit("fund_rejected", near_sdk::serde_json::json!({ "sender": sender_id, "amount": amount, "reason": "no such split" }));
+            return PromiseOrValue::Value(amount);
+        };
+        if amount.0 < MIN_SPLIT_PAYMENT {
+            emit("fund_rejected", near_sdk::serde_json::json!({ "sender": sender_id, "amount": amount, "reason": "below the minimum split payment" }));
+            return PromiseOrValue::Value(amount);
+        }
+        let parts = split_amount(amount.0, &rule.shares);
+        let lines: Vec<LineInput> = rule
+            .shares
+            .iter()
+            .zip(parts)
+            .filter(|(_, p)| *p > 0)
+            .map(|(s, p)| LineInput { recipient: s.account.clone(), amount: U128(p), kind: LineKind::Near, dest: None, deadline_ms: None })
+            .collect();
+        let id = self.next_batch_id;
+        self.next_batch_id += 1;
+        let mut batch = Batch::new(id, rule.owner.clone(), hash_lines(&lines), amount.0, lines.len() as u32, sender_id.clone(), now_ms());
+        batch.mark_funded();
+        for (i, l) in lines.into_iter().enumerate() {
+            self.lines.insert((id, i as u32), Line::from(l));
+        }
+        self.batches.insert(id, batch);
+        emit("split_received", near_sdk::serde_json::json!({ "split": split_id, "batch": id, "owner": rule.owner, "amount": amount, "sender": sender_id }));
+        PromiseOrValue::Value(U128(0))
+    }
+
+    // ------------------------------------------------------------ splits
+
+    /// Create a standing revenue split for `owner` (by the owner or a preparer).
+    /// Shares are NEAR accounts (people, or a DAO) and must add up to 100%.
+    pub fn create_split(&mut self, owner: AccountId, shares: Vec<Share>) -> SplitRule {
+        self.owner_for_preparer(&owner);
+        if let Err(e) = validate_shares(&shares) {
+            env::panic_str(e);
+        }
+        require!(shares.iter().all(|s| s.account != env::current_account_id()), "cannot pay this contract");
+        let id = self.next_split_id;
+        self.next_split_id += 1;
+        let rule = SplitRule { id, owner: owner.clone(), shares, created_by: env::predecessor_account_id(), created_at_ms: now_ms() };
+        self.splits.insert(id, rule.clone());
+        emit("create_split", near_sdk::serde_json::json!({ "id": id, "owner": owner }));
+        rule
+    }
+
+    pub fn get_split(&self, id: u64) -> Option<SplitRule> {
+        self.splits.get(&id).cloned()
     }
 
     /// Anyone can push a funded batch forward. Pays up to `limit` queued
@@ -504,6 +581,7 @@ impl Cascade {
             storage_deposit: U128(self.storage_deposit.as_yoctonear()),
             next_invoice_id: self.next_invoice_id,
             next_batch_id: self.next_batch_id,
+            next_split_id: self.next_split_id,
         }
     }
 

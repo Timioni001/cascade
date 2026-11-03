@@ -232,6 +232,64 @@ pub struct Batch {
     pub buckets: Buckets,
 }
 
+// ---------------------------------------------------------------- splits
+
+/// One recipient's share of a split, in basis points (1/100 of a percent).
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Share {
+    pub account: AccountId,
+    pub bps: u16,
+}
+
+/// A standing revenue split: every payment sent to it (with
+/// `msg = {"split": id}`) is divided between `shares` and paid out at once.
+/// Immutable once created, so a payer always gets the split they were shown.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SplitRule {
+    pub id: u64,
+    pub owner: AccountId,
+    pub shares: Vec<Share>,
+    pub created_by: AccountId,
+    pub created_at_ms: u64,
+}
+
+pub const MAX_SHARES: usize = 10;
+pub const BPS_TOTAL: u32 = 10_000;
+
+/// Check a split: 1-10 shares, each > 0 bps, distinct accounts, adding up to 100%.
+pub fn validate_shares(shares: &[Share]) -> Result<(), &'static str> {
+    if shares.is_empty() || shares.len() > MAX_SHARES {
+        return Err("a split needs 1-10 shares");
+    }
+    let mut total: u32 = 0;
+    for (i, s) in shares.iter().enumerate() {
+        if s.bps == 0 {
+            return Err("every share must be above 0");
+        }
+        if shares[..i].iter().any(|o| o.account == s.account) {
+            return Err("each account may appear once");
+        }
+        total += s.bps as u32;
+    }
+    if total != BPS_TOTAL {
+        return Err("shares must add up to 10000 bps (100%)");
+    }
+    Ok(())
+}
+
+/// Divide `amount` by the shares, rounding down; the rounding remainder goes
+/// to the first share. The parts always add up to exactly `amount`.
+pub fn split_amount(amount: u128, shares: &[Share]) -> Vec<u128> {
+    let mut parts: Vec<u128> = shares.iter().map(|s| amount / BPS_TOTAL as u128 * s.bps as u128 + amount % BPS_TOTAL as u128 * s.bps as u128 / BPS_TOTAL as u128).collect();
+    let assigned: u128 = parts.iter().sum();
+    if let Some(first) = parts.first_mut() {
+        *first += amount - assigned;
+    }
+    parts
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum TransitionError {
     NotAllowed { from: LineStatus, to: LineStatus },
@@ -437,6 +495,38 @@ mod tests {
         assert_eq!(b.buckets.refunded.0, 20);
         assert_eq!(b.buckets.sum(), 30);
         assert_eq!(b.status, BatchStatus::PartlyRefunded);
+    }
+
+    fn share(a: &str, bps: u16) -> Share {
+        Share { account: acc(a), bps }
+    }
+
+    #[test]
+    fn split_validation() {
+        assert!(validate_shares(&[share("a.near", 7000), share("b.near", 3000)]).is_ok());
+        assert!(validate_shares(&[]).is_err());
+        assert!(validate_shares(&[share("a.near", 9999)]).is_err());
+        assert!(validate_shares(&[share("a.near", 5000), share("a.near", 5000)]).is_err());
+        assert!(validate_shares(&[share("a.near", 10000), share("b.near", 0)]).is_err());
+        let eleven: Vec<Share> = (0..11).map(|i| share(&format!("a{i}.near"), if i == 0 { 9000 } else { 100 })).collect();
+        assert!(validate_shares(&eleven).is_err());
+    }
+
+    #[test]
+    fn split_parts_always_add_up_and_never_overflow() {
+        let shares = [share("shop.near", 7000), share("designer.near", 2000), share("dao.sputnik-dao.near", 1000)];
+        assert_eq!(split_amount(25_000_000, &shares), vec![17_500_000, 5_000_000, 2_500_000]);
+        // 1/3 splits leave a remainder: it goes to the first share.
+        let thirds = [share("a.near", 3334), share("b.near", 3333), share("c.near", 3333)];
+        assert_eq!(split_amount(10, &thirds), vec![4, 3, 3]);
+        let mut seed: u64 = 7;
+        for _ in 0..2000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let amount = (seed as u128) * (seed as u128 % 1_000_003);
+            let p = split_amount(amount, &thirds);
+            assert_eq!(p.iter().sum::<u128>(), amount);
+        }
+        assert_eq!(split_amount(u128::MAX, &thirds).iter().fold(0u128, |a, b| a.checked_add(*b).unwrap()), u128::MAX);
     }
 
     /// Deterministic pseudo-random walk over legal moves: the invariant must

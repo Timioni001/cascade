@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  splitAmount, validateShares,
   accountToName, canonicalJson, encodeLines, formatUsd, hashLines, isAccountId, isValidName, parseUsd,
   type LineInput,
 } from "../src/index.js";
@@ -65,5 +66,16 @@ describe("accounts", () => {
   });
   it("canonical json sorts keys", () => {
     expect(canonicalJson({ b: 1, a: [{ d: 1, c: 2 }] })).toBe('{"a":[{"c":2,"d":1}],"b":1}');
+  });
+});
+
+describe("splits (mirror of the contract)", () => {
+  it("matches the Rust vectors and always adds up", () => {
+    const s = (a: string, bps: number) => ({ account: a, bps });
+    expect(splitAmount(25_000_000n, [s("shop", 7000), s("designer", 2000), s("dao", 1000)])).toEqual([17_500_000n, 5_000_000n, 2_500_000n]);
+    expect(splitAmount(10n, [s("a", 3334), s("b", 3333), s("c", 3333)])).toEqual([4n, 3n, 3n]);
+    expect(validateShares([s("a", 5000)])).toMatch(/100%/);
+    expect(validateShares([s("a", 5000), s("a", 5000)])).toMatch(/once/);
+    expect(validateShares([s("a", 10000)])).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { actions, type Action } from "near-api-js";
-import type { FundMsg, LineInput, OwnerKind } from "@cascade/core";
+import type { FundMsg, LineInput, OwnerKind, Share } from "@cascade/core";
 import { actProposalArgs, type ProposalInput, type ProposalKind, type VoteAction } from "@cascade/sputnik";
 
 /**
@@ -42,6 +42,7 @@ export function appCalls(app: string) {
     executeBatch: (id: number, limit = 8) =>
       fc(app, `pay up to ${limit} lines of batch #${id}`, "execute_batch", { id, limit }, 300n * TGAS),
     refundFailed: (id: number) => fc(app, `refund failed lines of batch #${id}`, "refund_failed", { id }, 100n * TGAS),
+    createSplit: (owner: string, shares: Share[]) => fc(app, `create a revenue split for ${owner}`, "create_split", { owner, shares }, 30n * TGAS),
   };
 }
 
@@ -50,6 +51,9 @@ export function ftCalls(token: string) {
     /** Fund a batch: the owner sends exactly the total, quoting the hash. */
     fundBatch: (app: string, total: bigint, msg: FundMsg) =>
       fc(token, `fund batch #${msg.batch_id}`, "ft_transfer_call", { receiver_id: app, amount: total.toString(), msg: JSON.stringify(msg) }, 100n * TGAS, 1n),
+    /** Pay into a revenue split (what 1Click does with customRecipientMsg). */
+    payToSplit: (app: string, amount: bigint, splitId: number) =>
+      fc(token, `pay ${amount} into split #${splitId}`, "ft_transfer_call", { receiver_id: app, amount: amount.toString(), msg: JSON.stringify({ split: splitId }) }, 100n * TGAS, 1n),
     transfer: (to: string, amount: bigint, memo?: string) =>
       fc(token, `send ${amount} to ${to}`, "ft_transfer", { receiver_id: to, amount: amount.toString(), ...(memo ? { memo } : {}) }, 15n * TGAS, 1n),
     storageDeposit: (account: string, deposit = 1_250_000_000_000_000_000_000n) =>

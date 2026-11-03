@@ -89,6 +89,42 @@ export interface AppConfig {
   storage_deposit: string;
   next_invoice_id: number;
   next_batch_id: number;
+  next_split_id: number;
+}
+
+/** A standing revenue split (shares in basis points, adding up to 10000). */
+export interface Share {
+  account: string;
+  bps: number;
+}
+
+export interface SplitRule {
+  id: number;
+  owner: string;
+  shares: Share[];
+  created_by: string;
+  created_at_ms: number;
+}
+
+/** The msg that pays into a split: usdc.ft_transfer_call(app, amount, JSON.stringify({ split: id })). */
+export interface SplitMsg {
+  split: number;
+}
+
+/** Mirror of the contract's split arithmetic: rounds down, remainder to the first share. */
+export function splitAmount(amount: bigint, shares: readonly Share[]): bigint[] {
+  const parts = shares.map((s) => (amount / 10_000n) * BigInt(s.bps) + ((amount % 10_000n) * BigInt(s.bps)) / 10_000n);
+  const assigned = parts.reduce((a, b) => a + b, 0n);
+  if (parts.length) parts[0] = parts[0]! + (amount - assigned);
+  return parts;
+}
+
+export function validateShares(shares: readonly Share[]): string | null {
+  if (shares.length === 0 || shares.length > 10) return "a split needs 1-10 shares";
+  if (shares.some((s) => !Number.isInteger(s.bps) || s.bps <= 0)) return "every share must be above 0";
+  if (new Set(shares.map((s) => s.account)).size !== shares.length) return "each account may appear once";
+  if (shares.reduce((t, s) => t + s.bps, 0) !== 10_000) return "shares must add up to 10000 bps (100%)";
+  return null;
 }
 
 /** The msg passed to usdc.ft_transfer_call to fund a batch. */

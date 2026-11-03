@@ -332,3 +332,71 @@ fn line_hash_vector() {
     println!("LINE_HASH_VECTOR={h}");
     assert_eq!(h, include_str!("../../../packages/core/test/line-hash-vector.txt").trim());
 }
+
+// ------------------------------------------------------------ splits
+
+fn split_msg(id: u64) -> String {
+    format!(r#"{{"split":{id}}}"#)
+}
+
+#[test]
+fn split_payments_become_funded_batches_that_add_up() {
+    let mut c = setup();
+    as_caller("ada.near");
+    let rule = c.create_split(
+        acc("ada.near"),
+        vec![Share { account: acc("ada.near"), bps: 7000 }, Share { account: acc("bob.near"), bps: 2000 }, Share { account: acc("team.sputnik-dao.near"), bps: 1000 }],
+    );
+    // Anyone may pay into a split, e.g. intents.near delivering a checkout payment.
+    as_caller(USDC);
+    match c.ft_on_transfer(acc("intents.near"), U128(25_000_000), split_msg(rule.id)) {
+        PromiseOrValue::Value(v) => assert_eq!(v.0, 0),
+        _ => panic!(),
+    }
+    let b = c.get_batch(0).unwrap();
+    assert_eq!(b.status, BatchStatus::Funded);
+    assert_eq!(b.owner, acc("ada.near"));
+    assert_eq!(b.total.0, 25_000_000);
+    let lines = c.get_lines(0, None, None);
+    let amounts: Vec<u128> = lines.iter().map(|l| l.amount.0).collect();
+    assert_eq!(amounts, vec![17_500_000, 5_000_000, 2_500_000]);
+    assert_eq!(b.hash, hash_lines(&lines.iter().map(|l| LineInput { recipient: l.recipient.clone(), amount: l.amount, kind: l.kind, dest: None, deadline_ms: None }).collect::<Vec<_>>()));
+    // It pays out like any batch.
+    as_caller("anyone.near");
+    assert_eq!(c.execute_batch(0, 8), 3);
+}
+
+#[test]
+fn split_rejections_return_everything() {
+    let mut c = setup();
+    as_caller("ada.near");
+    let rule = c.create_split(acc("ada.near"), vec![Share { account: acc("ada.near"), bps: 10000 }]);
+    as_caller(USDC);
+    for (amt, msg) in [(1_000_000u128, split_msg(99)), (9_999, split_msg(rule.id)), (1_000_000, r#"{"split":0,"x":1}"#.to_string())] {
+        match c.ft_on_transfer(acc("payer.near"), U128(amt), msg) {
+            PromiseOrValue::Value(v) => assert_eq!(v.0, amt),
+            _ => panic!(),
+        }
+    }
+    as_caller("fake-usdc.near");
+    match c.ft_on_transfer(acc("payer.near"), U128(1_000_000), split_msg(rule.id)) {
+        PromiseOrValue::Value(v) => assert_eq!(v.0, 1_000_000),
+        _ => panic!(),
+    }
+    assert!(c.get_batch(0).is_none());
+}
+
+#[test]
+fn only_owner_or_preparer_creates_valid_splits() {
+    let mut c = setup();
+    as_caller("mallory.near");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.create_split(acc("ada.near"), vec![Share { account: acc("mallory.near"), bps: 10000 }]);
+    }));
+    assert!(r.is_err());
+    as_caller("ada.near");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.create_split(acc("ada.near"), vec![Share { account: acc("ada.near"), bps: 5000 }]);
+    }));
+    assert!(r.is_err(), "shares must add up to 100%");
+}
