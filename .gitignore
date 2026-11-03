@@ -1,0 +1,13 @@
+node_modules/
+contracts/target/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-journal
+.data/
+.next/
+dist/
+coverage/
+.DS_Store
+.sandbox/

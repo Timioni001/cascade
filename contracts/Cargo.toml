@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["app", "factory", "mock-usdc"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/timioni001/cascade"
+
+[workspace.dependencies]
+near-sdk = "=5.29.1"
+near-contract-standards = "=5.29.1"
+hex = "0.4"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+# Keep overflow checks on: every amount in this repo is money.
+overflow-checks = true

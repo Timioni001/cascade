@@ -1,0 +1,30 @@
+{
+  "name": "cascade",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Get paid in crypto from any blockchain and receive US dollars. Send, split and run team payroll with no fees for your users. Built on NEAR.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "demo": "tsx scripts/demo-sandbox.ts",
+    "demo:mainnet": "tsx scripts/demo-mainnet.ts",
+    "test": "pnpm test:ts && pnpm test:contracts",
+    "test:ts": "vitest run",
+    "test:contracts": "cd contracts && cargo test",
+    "test:sandbox": "vitest run --project sandbox",
+    "build:contracts": "bash scripts/build-contracts.sh",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "near-api-js": "7.4.0",
+    "near-sandbox": "0.3.4",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}
