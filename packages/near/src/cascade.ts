@@ -32,6 +32,12 @@ export class CascadeReader {
   allowance(owner: string, agent: string) {
     return this.chain.view<Allowance | null>(this.app, "get_allowance", { owner, agent });
   }
+  allowances(owner: string) {
+    return this.chain.view<Allowance[]>(this.app, "get_allowances", { owner });
+  }
+  escrowsFor(account: string) {
+    return this.chain.view<Escrow[]>(this.app, "get_escrows_for", { account });
+  }
   isDepositRecorded(depositAddress: string) {
     return this.chain.view<boolean>(this.app, "is_deposit_recorded", { deposit_address: depositAddress });
   }

@@ -118,9 +118,12 @@ button { font: inherit; color: inherit; }
 .input:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input::placeholder { color: var(--muted); }
 
+.nav-item { height: 38px; }
+
 /* Fingers need bigger targets than cursors: 44px minimum on touch screens. */
 @media (pointer: coarse) {
   .btn.sm, .icon-btn { min-height: 44px; min-width: 44px; }
+  .nav-item { min-height: 44px; }
   .nav-links a { min-height: 44px; display: inline-flex; align-items: center; }
   .input { min-height: 44px; }
 }

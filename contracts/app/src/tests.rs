@@ -561,3 +561,19 @@ fn revoking_stops_the_agent_and_returns_the_balance() {
         c.set_allowance(acc("ada.near"), policy(1, 1), None);
     }), "an owner cannot be its own agent");
 }
+
+#[test]
+fn owners_list_their_agents_and_parties_list_their_escrows() {
+    let mut c = setup();
+    as_caller("ada.near");
+    c.set_allowance(acc("bot1.ada.near"), policy(1, 2), None);
+    c.set_allowance(acc("bot2.ada.near"), policy(1, 2), None);
+    c.set_allowance(acc("bot1.ada.near"), policy(1, 3), None); // update, not a second entry
+    assert_eq!(c.get_allowances(acc("ada.near")).iter().map(|a| a.agent.to_string()).collect::<Vec<_>>(), vec!["bot1.ada.near", "bot2.ada.near"]);
+    assert!(c.get_allowances(acc("eve.near")).is_empty());
+    escrow(&mut c);
+    escrow(&mut c);
+    assert_eq!(c.get_escrows_for(acc("ada.near")).iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 0]);
+    assert_eq!(c.get_escrows_for(acc("client.near")).len(), 2);
+    assert!(c.get_escrows_for(acc("eve.near")).is_empty());
+}

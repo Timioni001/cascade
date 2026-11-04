@@ -23,6 +23,7 @@ import { createPlatform, parseConfig } from "@cascade/platform";
 import { staticSite } from "../services/server/src/static.js";
 import { createWorld } from "./sandbox/world.js";
 import { onboardMerchant } from "./sandbox/checkout-flow.js";
+import { seedMerchant } from "./sandbox/seed.js";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATIC = process.argv.includes("--static");
@@ -61,6 +62,7 @@ await w.engine.registerPerson(shop.gasless);
 const keys = await onboardMerchant(w, shop, "Oakline Ceramics", `${WEB}/api/shop/webhook`, API);
 platform = start(keys);
 console.log(`Merchant ${shop.id} onboarded. Platform on ${API}`);
+await seedMerchant(w, shop, store, (s) => console.log(`Seeded ${s}`));
 
 let stopping = false;
 (async () => {

@@ -64,7 +64,14 @@ enum Key {
     Splits,
     Escrows,
     Allowances,
+    AgentsByOwner,
+    EscrowsByAccount,
 }
+
+/// Agents one owner can have at once (bounded so the index stays cheap).
+pub const MAX_AGENTS_PER_OWNER: usize = 20;
+/// Escrows remembered per account for listing (the newest; older ones stay readable by id).
+pub const ESCROW_INDEX_LEN: usize = 100;
 
 /// `msg` for funding an escrow (exact total; anyone may fund it, e.g. 1Click delivering a checkout payment).
 #[derive(Serialize, Deserialize, Debug)]
@@ -137,6 +144,9 @@ pub struct Cascade {
     splits: LookupMap<u64, SplitRule>,
     escrows: LookupMap<u64, Escrow>,
     allowances: LookupMap<(AccountId, AccountId), Allowance>,
+    /// For listing: an owner's agents, and the escrows an account is payee or payer of.
+    agents_by_owner: LookupMap<AccountId, Vec<AccountId>>,
+    escrows_by_account: LookupMap<AccountId, Vec<u64>>,
     next_invoice_id: u64,
     next_batch_id: u64,
     next_split_id: u64,
@@ -204,6 +214,8 @@ impl Cascade {
             splits: LookupMap::new(Key::Splits),
             escrows: LookupMap::new(Key::Escrows),
             allowances: LookupMap::new(Key::Allowances),
+            agents_by_owner: LookupMap::new(Key::AgentsByOwner),
+            escrows_by_account: LookupMap::new(Key::EscrowsByAccount),
             next_invoice_id: 0,
             next_batch_id: 0,
             next_split_id: 0,
@@ -650,6 +662,14 @@ impl Cascade {
             funded_by: None,
         };
         self.escrows.insert(id, e.clone());
+        for party in [e.payee.clone(), e.payer.clone()] {
+            let mut ids = self.escrows_by_account.get(&party).cloned().unwrap_or_default();
+            ids.push(id);
+            if ids.len() > ESCROW_INDEX_LEN {
+                ids.remove(0);
+            }
+            self.escrows_by_account.insert(party, ids);
+        }
         emit("create_escrow", near_sdk::serde_json::json!({ "id": id, "payee": e.payee, "payer": e.payer, "total": e.total }));
         e
     }
@@ -759,7 +779,13 @@ impl Cascade {
                 a.authorized_at_ms = now;
                 a
             }
-            None => Allowance::new(owner.clone(), agent.clone(), policy, purpose, now),
+            None => {
+                let mut agents = self.agents_by_owner.get(&owner).cloned().unwrap_or_default();
+                require!(agents.len() < MAX_AGENTS_PER_OWNER, "at most 20 agents per owner");
+                agents.push(agent.clone());
+                self.agents_by_owner.insert(owner.clone(), agents);
+                Allowance::new(owner.clone(), agent.clone(), policy, purpose, now)
+            }
         };
         self.allowances.insert(key, a.clone());
         emit("set_allowance", near_sdk::serde_json::json!({ "owner": owner, "agent": agent, "policy": a.policy, "purpose": a.purpose }));
@@ -860,6 +886,18 @@ impl Cascade {
 
     pub fn get_allowance(&self, owner: AccountId, agent: AccountId) -> Option<Allowance> {
         self.allowances.get(&(owner, agent)).cloned()
+    }
+
+    /// Every agent budget `owner` has set, including revoked ones.
+    pub fn get_allowances(&self, owner: AccountId) -> Vec<Allowance> {
+        let agents = self.agents_by_owner.get(&owner).cloned().unwrap_or_default();
+        agents.into_iter().filter_map(|a| self.allowances.get(&(owner.clone(), a)).cloned()).collect()
+    }
+
+    /// Escrows `account` is the payee or payer of, newest first (up to the last 100).
+    pub fn get_escrows_for(&self, account: AccountId) -> Vec<Escrow> {
+        let ids = self.escrows_by_account.get(&account).cloned().unwrap_or_default();
+        ids.iter().rev().filter_map(|id| self.escrows.get(id).cloned()).collect()
     }
 
     // ------------------------------------------------------------ views

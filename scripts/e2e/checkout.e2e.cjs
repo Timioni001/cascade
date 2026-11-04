@@ -119,6 +119,20 @@ const assert = (c, m) => {
     await d.click("button:has-text('Customers')");
     await d.waitForSelector("text=Fieldwork Café");
     await d.screenshot({ path: `${out}/15-dashboard-customers.png` });
+    // Money out: payouts, escrow (with a funding link for the client), agent budgets.
+    await d.click("button:has-text('Payouts')");
+    await d.waitForSelector("text=Contractors, November");
+    await d.click("text=Contractors, November");
+    await d.waitForSelector("text=Product photographer");
+    await d.screenshot({ path: `${out}/17-dashboard-payouts.png` });
+    await d.click("button:has-text('Escrow')");
+    await d.waitForSelector("text=Glaze samples approved");
+    await d.click("text=Create a funding link");
+    await d.waitForSelector("text=Funding link for the client");
+    await d.screenshot({ path: `${out}/18-dashboard-escrow.png`, fullPage: true });
+    await d.click("button:has-text('Agents')");
+    await d.waitForSelector("text=oakline-assistant.sandbox");
+    await d.screenshot({ path: `${out}/19-dashboard-agents.png` });
     await d.click("button:has-text('Settings')");
     await d.click("text=New read-only key");
     await d.waitForSelector("text=Shown once");

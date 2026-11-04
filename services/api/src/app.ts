@@ -107,6 +107,22 @@ export function apiApp(o: ApiOptions) {
     const m = me(ctx);
     return ctx.json({ id: m.id, name: m.name, account: m.account, webhookUrl: m.webhookUrl, payout: m.payout ?? null });
   });
+  // ------------------------------------------------------------ money out (read from the chain)
+  merchant.get("/merchant/escrows", async (ctx) => ctx.json({ object: "list", data: await c.reader.escrowsFor(me(ctx).account) }));
+  merchant.get("/merchant/agents", async (ctx) => ctx.json({ object: "list", data: await c.reader.allowances(me(ctx).account) }));
+  merchant.get("/merchant/payouts", async (ctx) => {
+    const docs = (await c.cfg.store.listBatches(me(ctx).account)).slice(-50).reverse();
+    const data = await Promise.all(docs.map(async (d) => {
+      const b = await c.reader.batch(d.id).catch(() => null);
+      return {
+        id: d.id, title: d.title, createdAt: d.createdAt, lines: d.lines.length,
+        total: d.lines.reduce((t, l) => t + BigInt(l.amount), 0n).toString(),
+        recipients: d.lines.map((l) => ({ name: l.name, chain: l.chain, address: l.address, amount: l.amount })),
+        status: b?.status ?? "Unknown", buckets: b?.buckets ?? null, dao: d.ownerKind === "Dao",
+      };
+    }));
+    return ctx.json({ object: "list", data });
+  });
   merchant.get("/merchant/keys", async (ctx) => ctx.json({ object: "list", data: await c.listKeys(me(ctx)) }));
   merchant.post("/merchant/keys", async (ctx) => {
     const b = await body(ctx);

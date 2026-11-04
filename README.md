@@ -44,6 +44,8 @@ const refund = await cascade.refunds.create(session.id, { amount: "10.00" }); //
 - **Subscriptions:** plans billed every day, week, month or year. Crypto has no card on file, so renewal invoices go out before each period ends; customers can prepay up to 12 periods. Unpaid renewals become `past_due`, then `canceled`. **Customers** are aggregated across invoices and subscriptions.
 - **Milestone escrow (on-chain):** `create_escrow` with up to 20 milestones; the customer funds it through an ordinary checkout from any chain (1Click delivers into the contract); only the payer (or an arbiter) releases a milestone to the payee, refunds only go to the payer, and anyone can return unreleased money after the refund date.
 - **Agent budgets (on-chain):** an owner gives an AI agent an allowance with a per-payment limit, a daily limit, an expiry and optional allowed recipients. The agent pays x402 invoices with `agent_pay`, gaslessly; the contract refuses anything outside the limits, and revoking returns the rest at once.
+- **AI assistants (MCP):** `cascade-mcp` lets Claude, Cursor or any MCP client run the account ("invoice Fieldwork Café for 24 mugs") and lets an agent pay x402 APIs from its budget with `paid_fetch`. Every agent payment's receipt shows who authorized it, for what, and within which limits. Setup: [docs/mcp.md](docs/mcp.md).
+- **Pay out from the dashboard view:** payouts to any chain, escrows with milestone progress (and a funding link the client pays in any coin), and agent budgets with today's spend.
 - **Team access:** read-only keys (`rk_…`) for an accountant or a support tool can see everything and change nothing.
 
 ```ts
@@ -60,7 +62,7 @@ Requirements: Node 22.13+, pnpm 10, internet access for the first run (downloads
 
 ```sh
 pnpm i
-pnpm demo     # every story end to end in the terminal, 36 checks, ~75 s
+pnpm demo     # every story end to end in the terminal, 38 checks, ~80 s
 pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 pnpm worker:local   # the same, running inside the real Cloudflare Worker runtime with D1, on :8787
 ```
@@ -87,7 +89,7 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 7. **Refund:** $10 goes back to the first customer as ETH on Base; the shop signs twice (create, fund) and receives `refund.succeeded`.
 8. **AI agent:** an agent pays the shop's API over x402 and gets its data; replaying the same payment is refused.
 9. **The rest of the platform:** the shop switches its payout to USDC on Base (signed), bills a café a $467 invoice paid in SOL, starts a subscription with 3 months prepaid, runs an $800 milestone escrow funded from Base (one milestone released, one refunded), and gives an AI agent a $5 budget with on-chain limits that pays over x402 without holding any NEAR.
-10. The accountant's CSV is printed, then 36 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
+10. The accountant's CSV is printed, then 38 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
 
 ## Proof
 
@@ -101,10 +103,10 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 ## Tests
 
 ```sh
-pnpm test:unit       # 87 TypeScript unit tests (seconds)
+pnpm test:unit       # 92 TypeScript unit tests (seconds)
 pnpm test:sandbox    # 31 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
 pnpm test            # both
-pnpm test:contracts  # 40 Rust unit tests (needs Rust)
+pnpm test:contracts  # 41 Rust unit tests (needs Rust)
 pnpm test:e2e        # optional browser test: button, QR, receipt, dashboard (needs Playwright; run pnpm dev first;
                      # CASCADE_WEB=http://localhost:8787 to test the Worker from pnpm worker:local)
 ```

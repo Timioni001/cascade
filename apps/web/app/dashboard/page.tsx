@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Download, FileText, LayoutGrid, Link2, Loader2, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Settings2, Undo2, Users, Webhook } from "lucide-react";
+import { ArrowUpRight, Bot, Download, FileText, LayoutGrid, Link2, Loader2, Lock, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Send, Settings2, Undo2, Users, Webhook } from "lucide-react";
 import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
 import { Badge, Brand, DemoBanner, chainName, toneOf, usd } from "../components/ui";
 import { API } from "../../lib/api";
 import { call } from "./api";
 import { CustomersTab, InvoicesTab, SubscriptionsTab } from "./Billing";
 import { SettingsTab } from "./Settings";
+import { AgentsTab, EscrowTab, PayoutsTab } from "./MoneyOut";
 
 type Webhook = { id: string; type: string; status: string; attempts: number; lastError: string | null; createdAt: string };
 type Me = { name: string; account: string; webhookUrl: string | null; payout: { chain: string; address: string } | null };
-type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "webhooks" | "reports" | "settings";
+type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "payouts" | "escrow" | "agents" | "webhooks" | "reports" | "settings";
 
 const KEY = "cascade_dashboard_key";
 const readKey = () => {
@@ -188,15 +189,33 @@ export default function Dashboard() {
     );
   }
 
-  const nav: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
-    { id: "overview", label: "Overview", icon: LayoutGrid },
-    { id: "payments", label: "Payments", icon: FileText },
-    { id: "invoices", label: "Invoices", icon: ScrollText },
-    { id: "subscriptions", label: "Subscriptions", icon: Repeat },
-    { id: "customers", label: "Customers", icon: Users },
-    { id: "webhooks", label: "Webhooks", icon: Webhook },
-    { id: "reports", label: "Reports", icon: Download },
-    { id: "settings", label: "Settings", icon: Settings2 },
+  const nav: { group: string; items: { id: Tab; label: string; icon: typeof LayoutGrid }[] }[] = [
+    { group: "", items: [{ id: "overview", label: "Overview", icon: LayoutGrid }] },
+    {
+      group: "Get paid",
+      items: [
+        { id: "payments", label: "Payments", icon: FileText },
+        { id: "invoices", label: "Invoices", icon: ScrollText },
+        { id: "subscriptions", label: "Subscriptions", icon: Repeat },
+        { id: "customers", label: "Customers", icon: Users },
+      ],
+    },
+    {
+      group: "Pay out",
+      items: [
+        { id: "payouts", label: "Payouts", icon: Send },
+        { id: "escrow", label: "Escrow", icon: Lock },
+        { id: "agents", label: "Agents", icon: Bot },
+      ],
+    },
+    {
+      group: "Account",
+      items: [
+        { id: "webhooks", label: "Webhooks", icon: Webhook },
+        { id: "reports", label: "Reports", icon: Download },
+        { id: "settings", label: "Settings", icon: Settings2 },
+      ],
+    },
   ];
 
   return (
@@ -205,12 +224,17 @@ export default function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "232px minmax(0,1fr)", minHeight: "100dvh" }} className="dash">
         <aside style={{ borderRight: "1px solid var(--line)", padding: 20, display: "flex", flexDirection: "column", gap: 24, position: "sticky", top: 0, height: "100dvh" }} className="dash-side">
           <Brand />
-          <nav style={{ display: "grid", gap: 4 }} aria-label="Dashboard">
-            {nav.map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className="row-start"
-                style={{ height: 42, padding: "0 14px", borderRadius: 999, border: 0, cursor: "pointer", background: tab === id ? "var(--card-2)" : "transparent", color: tab === id ? "var(--ink)" : "var(--muted)", fontWeight: tab === id ? 600 : 500 }}>
-                <Icon size={17} /> {label}
-              </button>
+          <nav style={{ display: "grid", gap: 2, overflowY: "auto" }} aria-label="Dashboard">
+            {nav.map(({ group, items }) => (
+              <div key={group || "home"} style={{ display: "grid", gap: 2, marginTop: group ? 14 : 0 }} role="group" aria-label={group || "Home"}>
+                {group && <div className="tiny muted" style={{ padding: "0 14px 4px", fontWeight: 500 }}>{group}</div>}
+                {items.map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className="row-start nav-item"
+                    style={{ padding: "0 14px", borderRadius: "var(--r-sm)", border: 0, cursor: "pointer", background: tab === id ? "var(--card-2)" : "transparent", color: tab === id ? "var(--ink)" : "var(--muted)", fontWeight: tab === id ? 600 : 500 }}>
+                    <Icon size={16} /> {label}
+                  </button>
+                ))}
+              </div>
             ))}
           </nav>
           <button onClick={signOut} className="row-start muted" style={{ marginTop: "auto", background: "transparent", border: 0, cursor: "pointer", padding: "0 14px" }}><LogOut size={16} /> Sign out</button>
@@ -308,6 +332,9 @@ export default function Dashboard() {
           {tab === "invoices" && <InvoicesTab secret={key} onError={setError} />}
           {tab === "subscriptions" && <SubscriptionsTab secret={key} onError={setError} />}
           {tab === "customers" && <CustomersTab secret={key} onError={setError} />}
+          {tab === "payouts" && <PayoutsTab secret={key} onError={setError} />}
+          {tab === "escrow" && me && <EscrowTab secret={key} account={me.account} onError={setError} />}
+          {tab === "agents" && <AgentsTab secret={key} onError={setError} />}
           {tab === "settings" && me && <SettingsTab secret={key} payout={me.payout} account={me.account} onError={setError} />}
 
           {tab === "webhooks" && (
