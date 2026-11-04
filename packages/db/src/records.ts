@@ -40,6 +40,8 @@ export interface PaymentRecord {
   refundReason: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Paid by an AI agent from an on-chain allowance (x402 on NEAR): who, and on whose authority. */
+  agent?: { agent: string; owner: string } | null;
 }
 
 export interface BatchLineDoc {

@@ -165,6 +165,7 @@ export class AgentPayments {
         quote: { amountIn: paid.amount, amountInFormatted: usd, amountInUsd: usd, minAmountIn: paid.amount, amountOut: paid.amount, amountOutFormatted: usd, amountOutUsd: usd, minAmountOut: paid.amount, timeEstimate: 0 },
       },
       status: "SUCCESS", recorded: false, nearTx: txHash, destTx: txHash, amountOut: paid.amount, refundReason: null, createdAt: at, updatedAt: at,
+      agent: { agent: paid.agent, owner: paid.owner },
     };
     await this.c.cfg.store.putPayment(rec);
     const latest = await this.c.getSession(s.id);

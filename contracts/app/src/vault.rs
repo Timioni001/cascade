@@ -10,6 +10,8 @@ pub const MAX_TITLE: usize = 100;
 pub const MIN_MILESTONE: u128 = 10_000; // 0.01 USDC
 pub const MAX_PAYEES: usize = 20;
 pub const MAX_MEMO: usize = 64;
+/// What the owner tells the agent the money is for, in the owner's words.
+pub const MAX_PURPOSE: usize = 140;
 pub const DAY_MS: u64 = 86_400_000;
 /// Refund window bounds: at least an hour, at most a year.
 pub const MIN_REFUND_AFTER_MS: u64 = 3_600_000;
@@ -175,6 +177,10 @@ pub struct Allowance {
     pub total_spent: U128,
     pub payments: u64,
     pub revoked: bool,
+    /// The mandate, in the owner's words ("Weather data for the Lisbon store"). Shown on every receipt the agent produces.
+    pub purpose: String,
+    /// When the owner last signed these limits (set_allowance is a transaction from the owner's own account).
+    pub authorized_at_ms: u64,
 }
 
 pub fn validate_policy(p: &AllowancePolicy, now_ms: u64) -> Result<(), &'static str> {
@@ -194,8 +200,11 @@ pub fn validate_policy(p: &AllowancePolicy, now_ms: u64) -> Result<(), &'static 
 }
 
 impl Allowance {
-    pub fn new(owner: AccountId, agent: AccountId, policy: AllowancePolicy) -> Self {
-        Allowance { owner, agent, balance: U128(0), policy, day: 0, spent_today: U128(0), total_spent: U128(0), payments: 0, revoked: false }
+    pub fn new(owner: AccountId, agent: AccountId, policy: AllowancePolicy, purpose: String, now_ms: u64) -> Self {
+        Allowance {
+            owner, agent, balance: U128(0), policy, day: 0, spent_today: U128(0), total_spent: U128(0), payments: 0, revoked: false,
+            purpose, authorized_at_ms: now_ms,
+        }
     }
 
     fn today_spent(&self, now_ms: u64) -> u128 {
@@ -340,6 +349,8 @@ mod tests {
             acc("ada.near"),
             acc("agent.ada.near"),
             AllowancePolicy { per_payment_max: U128(100), daily_max: U128(250), expires_at_ms: 10 * DAY_MS, payees: vec![] },
+            "Weather data".into(),
+            0,
         );
         a.balance = U128(1_000);
         a

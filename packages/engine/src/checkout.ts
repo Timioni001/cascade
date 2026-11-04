@@ -524,6 +524,18 @@ export class Checkout {
             quoteSignature: d?.signature ?? null,
           }
         : null,
+      // Paid by an AI agent: the mandate it acted under, read from the chain now.
+      mandate: rec?.agent ? await this.mandate(rec.agent.owner, rec.agent.agent) : null,
+    };
+  }
+
+  private async mandate(owner: string, agent: string) {
+    const a = await this.reader.allowance(owner, agent).catch(() => null);
+    if (!a) return null;
+    return {
+      owner, agent, purpose: a.purpose, authorizedAt: new Date(a.authorized_at_ms).toISOString(),
+      perPaymentMax: a.policy.per_payment_max, dailyMax: a.policy.daily_max, expiresAt: new Date(a.policy.expires_at_ms).toISOString(),
+      payees: a.policy.payees, totalSpent: a.total_spent, payments: a.payments, revoked: a.revoked,
     };
   }
 

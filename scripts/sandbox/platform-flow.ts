@@ -16,6 +16,7 @@ import {
   Cascade, X402_HEADERS, decodeHeader, fetchWithPayment, x402Guard,
   type CheckoutSession, type Invoice, type Subscription, type X402Settlement,
 } from "@cascade/sdk";
+import { AgentWallet, McpServer } from "@cascade/mcp";
 import type { CheckoutResult } from "./checkout-flow.js";
 import type { Narrator } from "./flows.js";
 import { ids, type Person, type World } from "./world.js";
@@ -47,6 +48,10 @@ export interface PlatformResult {
     allowance: Allowance | null;
     ownerRefund: bigint;
     agentNearSpent: bigint;
+    /** The receipt's mandate: who authorized the agent, and for what. */
+    mandate: { owner: string; agent: string; purpose: string } | null;
+    /** The same agent driven by an AI assistant through the Cascade MCP server. */
+    mcp: { tools: string[]; leftToday: string | null; cappedRefused: boolean; status: number | null; paid: string | null };
   };
 }
 
@@ -197,7 +202,7 @@ async function agentAllowanceStory(w: World, n: Narrator, cascade: Cascade, shop
   // The agent's account holds a little NEAR only because every NEAR account needs storage; it never spends any.
   const agent = await w.plainAccount("forecaster", 10n ** 23n);
   const policy = { per_payment_max: "500000", daily_max: "1000000", expires_at_ms: Date.now() + 7 * 86_400_000, payees: [shop.id] };
-  expectOk(await lab.gasless(appCalls(ids.app).setAllowance(agent.id, policy)), "set allowance");
+  expectOk(await lab.gasless(appCalls(ids.app).setAllowance(agent.id, policy, "Weather data for the store's delivery planning")), "set allowance");
   expectOk(await lab.gaslessFull(ftCalls(ids.usdc).fundAllowance(ids.app, parseUsd("5.00"), agent.id)), "fund allowance");
   n.ok(`${lab.id} gives ${agent.id} $5.00 to spend: at most $0.50 per payment, $1.00 a day, only at ${shop.id}, for 7 days.`);
 
@@ -230,6 +235,34 @@ async function agentAllowanceStory(w: World, n: Narrator, cascade: Cascade, shop
   const sessions = (await cascade.checkout.list({ limit: 5 })).data as CheckoutSession[];
   const paidSession = sessions.find((s) => s.status === "paid" && s.description === "3-day forecast");
   n.ok(`HTTP ${res.status}: data delivered. Cascade verified the contract's agent_payment event; receipt #${paidSession?.receipt?.id} on-chain.`);
+  const receipt = paidSession ? ((await (await fetch(`${w.apiUrl}/v1/public/sessions/${paidSession.id}/receipt`)).json()) as { mandate: PlatformResult["agent"]["mandate"] }) : null;
+  n.say(`Its receipt shows the mandate: ${receipt?.mandate?.owner} authorized ${receipt?.mandate?.agent} for "${receipt?.mandate?.purpose}".`);
+
+  n.step("26. The same agent, inside an AI assistant (Cascade MCP server)");
+  const wallet = new AgentWallet({
+    chain: w.chain, app: ids.app, owner: lab.id, agent: agent.id, agentKey: agent.key.toString(),
+    relay: async (b64) => {
+      const r = await w.relayer.relay(b64, { ip: "127.0.0.1" });
+      return { hash: r.hash, ok: r.ok, error: r.error ?? null, signer: w.relayer.account };
+    },
+    fetch: async (u, init) => {
+      const r = await handler(new Request(String(u), init));
+      if (r.status === 402) await w.settle();
+      return r;
+    },
+  });
+  const mcp = new McpServer({ name: "cascade", title: "Cascade", version: "0.1.0" }, wallet.tools());
+  type ToolResult = { result: { structuredContent?: Record<string, unknown>; isError?: boolean; content: { text: string }[] } };
+  const call = async (name: string, args: Record<string, unknown> = {}) =>
+    ((await mcp.handle({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } })) as ToolResult).result;
+  const tools = ((await mcp.handle({ jsonrpc: "2.0", id: 0, method: "tools/list" })) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
+  const st = await call("wallet_status");
+  n.say(`The assistant sees tools ${tools.join(", ")}; wallet_status: $${st.structuredContent?.balance} left, $${st.structuredContent?.leftToday} today, purpose "${st.structuredContent?.purpose}"`);
+  const capped = await call("paid_fetch", { url: "https://oakline.example/api/forecast", max_usd: 0.05 });
+  n.say(`Asked to spend at most $0.05 on a $0.10 call, it refuses: ${capped.content[0]?.text}`);
+  const viaMcp = await call("paid_fetch", { url: "https://oakline.example/api/forecast" });
+  const vm = viaMcp.structuredContent as { status: number; paid: { amount: string } | null } | undefined;
+  n.ok(`paid_fetch: HTTP ${vm?.status}, paid $${vm?.paid?.amount} from the budget, no gas, no wallet popup.`);
 
   const over = await agent.gasless(appCalls(ids.app).agentPay(lab.id, shop.id, 600_000n, "too much"));
   const elsewhere = await agent.gasless(appCalls(ids.app).agentPay(lab.id, ids.relayer, 100_000n, "elsewhere"));
@@ -243,5 +276,10 @@ async function agentAllowanceStory(w: World, n: Narrator, cascade: Cascade, shop
     overLimitRefused: !over.ok, strangerRefused: !elsewhere.ok,
     allowance: await w.engine.reader.allowance(lab.id, agent.id),
     ownerRefund, agentNearSpent: agentNearBefore - (await w.nearBalance(agent.id)),
+    mandate: receipt?.mandate ?? null,
+    mcp: {
+      tools, leftToday: (st.structuredContent?.leftToday as string | undefined) ?? null, cappedRefused: capped.isError === true,
+      status: vm?.status ?? null, paid: vm?.paid?.amount ?? null,
+    },
   };
 }

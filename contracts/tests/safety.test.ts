@@ -322,8 +322,10 @@ describe("agent allowances: spending limits enforced by the contract", () => {
     expect(a.status).toBe(200);
     expect(a.settlement?.success && a.receiptRecorded).toBe(true);
     expect(a.overLimitRefused && a.strangerRefused).toBe(true);
-    expect([a.ownerRefund, a.agentNearSpent]).toEqual([4_900_000n, 0n]);
-    expect(a.allowance).toMatchObject({ revoked: true, balance: "0", total_spent: "100000", payments: 1 });
+    expect([a.ownerRefund, a.agentNearSpent]).toEqual([4_800_000n, 0n]);
+    expect(a.mcp).toMatchObject({ cappedRefused: true, status: 200, paid: "0.10" });
+    expect(a.mandate).toMatchObject({ owner: "tidelab.cascade.sandbox", purpose: "Weather data for the store's delivery planning" });
+    expect(a.allowance).toMatchObject({ revoked: true, balance: "0", total_spent: "200000", payments: 2 });
   });
 
   it("the daily limit holds across payments, and only the owner can top up its own allowance", async () => {

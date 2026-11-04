@@ -50,7 +50,8 @@ export function appCalls(app: string) {
     cancelEscrow: (id: number) => fc(app, `cancel escrow #${id}`, "cancel_escrow", { id }, 20n * TGAS),
     releaseMilestone: (id: number, idx: number) => fc(app, `release milestone ${idx + 1} of escrow #${id}`, "release_milestone", { id, idx }, 80n * TGAS),
     refundMilestone: (id: number, idx: number) => fc(app, `refund milestone ${idx + 1} of escrow #${id}`, "refund_milestone", { id, idx }, 80n * TGAS),
-    setAllowance: (agent: string, policy: AllowancePolicy) => fc(app, `set spending limits for ${agent}`, "set_allowance", { agent, policy }, 20n * TGAS),
+    setAllowance: (agent: string, policy: AllowancePolicy, purpose?: string) =>
+      fc(app, `set spending limits for ${agent}`, "set_allowance", { agent, policy, purpose: purpose ?? null }, 20n * TGAS),
     agentPay: (owner: string, to: string, amount: bigint, memo: string) =>
       fc(app, `pay ${amount} to ${to} from ${owner}'s allowance`, "agent_pay", { owner, to, amount: amount.toString(), memo }, 80n * TGAS),
     revokeAllowance: (agent: string) => fc(app, `revoke ${agent}`, "revoke_allowance", { agent }, 50n * TGAS),

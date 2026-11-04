@@ -741,21 +741,28 @@ impl Cascade {
 
     /// The owner (the caller) sets or replaces what `agent` may spend. Fund it
     /// with `ft_transfer_call(msg: {"allowance": agent})`.
-    pub fn set_allowance(&mut self, agent: AccountId, policy: AllowancePolicy) -> Allowance {
+    /// `purpose` is the mandate in the owner's words; the owner's own
+    /// transaction is the proof they authorized it.
+    pub fn set_allowance(&mut self, agent: AccountId, policy: AllowancePolicy, purpose: Option<String>) -> Allowance {
         let owner = env::predecessor_account_id();
         require!(agent != owner, "an agent must be a different account");
-        validate_policy(&policy, now_ms()).unwrap_or_else(|e| env::panic_str(e));
+        let now = now_ms();
+        validate_policy(&policy, now).unwrap_or_else(|e| env::panic_str(e));
+        let purpose = purpose.unwrap_or_default();
+        require!(purpose.len() <= MAX_PURPOSE, "purpose is at most 140 bytes");
         let key = (owner.clone(), agent.clone());
         let a = match self.allowances.get(&key).cloned() {
             Some(mut a) => {
                 a.policy = policy;
                 a.revoked = false;
+                a.purpose = purpose;
+                a.authorized_at_ms = now;
                 a
             }
-            None => Allowance::new(owner.clone(), agent.clone(), policy),
+            None => Allowance::new(owner.clone(), agent.clone(), policy, purpose, now),
         };
         self.allowances.insert(key, a.clone());
-        emit("set_allowance", near_sdk::serde_json::json!({ "owner": owner, "agent": agent, "policy": a.policy }));
+        emit("set_allowance", near_sdk::serde_json::json!({ "owner": owner, "agent": agent, "policy": a.policy, "purpose": a.purpose }));
         a
     }
 

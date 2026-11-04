@@ -14,7 +14,34 @@ type ReceiptData = {
   hashMatches: boolean;
   depositMatches: boolean;
   delivery: { status: string; paidWith: { asset: string; symbol: string; chain: string; amount: string } | null; depositAddress: string; nearTx: string | null; quoteSignature: string | null } | null;
+  mandate: {
+    owner: string; agent: string; purpose: string; authorizedAt: string; perPaymentMax: string; dailyMax: string; expiresAt: string;
+    payees: string[]; totalSpent: string; payments: number; revoked: boolean;
+  } | null;
 };
+
+const dollars = (units: string) => (Number(units) / 1e6).toFixed(2);
+
+/** An agent paid: whose money it was, what for, and within which limits (read from the contract). */
+function Mandate({ m }: { m: NonNullable<ReceiptData["mandate"]> }) {
+  const rows: [string, string][] = [
+    ["Agent", m.agent],
+    ["Authorized by", `${m.owner}, ${new Date(m.authorizedAt).toLocaleString()}`],
+    ...(m.purpose ? [["Purpose", `“${m.purpose}”`] as [string, string]] : []),
+    ["Limits", `$${dollars(m.perPaymentMax)} per payment, $${dollars(m.dailyMax)} a day, until ${new Date(m.expiresAt).toLocaleDateString()}`],
+    ["Allowed recipients", m.payees.length ? m.payees.join(", ") : "anyone"],
+    ["Spent so far", `$${dollars(m.totalSpent)} in ${m.payments} payment${m.payments === 1 ? "" : "s"}${m.revoked ? " (now revoked)" : ""}`],
+  ];
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ fontWeight: 600, fontSize: 14 }}>Paid by an AI agent, on a person&apos;s authority</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 16px", fontSize: 13 }}>
+        {rows.map(([k, v]) => [<span key={`${k}-k`} style={{ color: "var(--muted)" }}>{k}</span>, <span key={`${k}-v`}>{v}</span>])}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>The owner set these limits with a transaction from their own account; the contract enforced them on this payment.</div>
+    </div>
+  );
+}
 
 function Check4({ ok, title, detail }: { ok: boolean; title: string; detail: string }) {
   return (
@@ -76,8 +103,13 @@ export function Receipt() {
               <Check4 ok={r.onchain?.status === "Paid"} title="Recorded as paid on NEAR" detail={`Receipt #${r.onchain?.id} in contract ${r.contract}`} />
               <Check4 ok={r.hashMatches} title="Bound to this exact order" detail={`Hash ${r.expectedHash.slice(0, 16)}…`} />
               <Check4 ok={r.depositMatches} title="Same one-time deposit address" detail={`${r.delivery?.depositAddress.slice(0, 18) ?? ""}…`} />
-              <Check4 ok={r.delivery?.status === "SUCCESS"} title="Delivered by NEAR Intents" detail="1Click reports the swap complete" />
+              {r.mandate ? (
+                <Check4 ok={r.delivery?.status === "SUCCESS"} title="Paid on NEAR from the agent's budget" detail="Read from the contract's own agent_payment event" />
+              ) : (
+                <Check4 ok={r.delivery?.status === "SUCCESS"} title="Delivered by NEAR Intents" detail="1Click reports the swap complete" />
+              )}
             </div>
+            {r.mandate && <><Dashed /><Mandate m={r.mandate} /></>}
             <Dashed />
             {tx && (txUrl ? (
               <a href={txUrl} target="_blank" rel="noreferrer" className="row" style={{ fontSize: 13, fontWeight: 600 }}>View delivery transaction <ExternalLink size={14} /></a>

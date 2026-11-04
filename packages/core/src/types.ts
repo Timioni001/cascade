@@ -149,6 +149,10 @@ export interface Allowance {
   total_spent: string;
   payments: number;
   revoked: boolean;
+  /** The mandate in the owner's words. */
+  purpose: string;
+  /** When the owner signed these limits. */
+  authorized_at_ms: number;
 }
 
 /** A standing revenue split (shares in basis points, adding up to 10000). */

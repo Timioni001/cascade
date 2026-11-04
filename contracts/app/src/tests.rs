@@ -521,7 +521,7 @@ fn policy(per: u128, daily: u128) -> AllowancePolicy {
 fn an_agent_spends_only_within_its_owners_limits() {
     let mut c = setup();
     as_caller("ada.near");
-    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000));
+    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000), Some("API credits".into()));
     assert_eq!(transfer(&mut c, "ada.near", 1_000_000, r#"{"allowance":"bot.ada.near"}"#.into()), 0);
     assert_eq!(transfer(&mut c, "eve.near", 5, r#"{"allowance":"bot.ada.near"}"#.into()), 5, "only the owner's own allowance can be topped up");
 
@@ -534,6 +534,7 @@ fn an_agent_spends_only_within_its_owners_limits() {
     assert!(panics(|| c.agent_pay(acc("ada.near"), acc("shop.near"), U128(60_000), "x".into())), "daily limit");
     let a = c.get_allowance(acc("ada.near"), acc("bot.ada.near")).unwrap();
     assert_eq!((a.balance.0, a.spent_today.0, a.payments), (800_000, 200_000, 2));
+    assert_eq!((a.purpose.as_str(), a.authorized_at_ms), ("API credits", NOW_MS));
 
     // A failed transfer gives back balance and daily room.
     with_result(APP, false);
@@ -546,7 +547,7 @@ fn an_agent_spends_only_within_its_owners_limits() {
 fn revoking_stops_the_agent_and_returns_the_balance() {
     let mut c = setup();
     as_caller("ada.near");
-    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000));
+    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000), Some("API credits".into()));
     transfer(&mut c, "ada.near", 500_000, r#"{"allowance":"bot.ada.near"}"#.into());
     as_caller("ada.near");
     c.revoke_allowance(acc("bot.ada.near"));
@@ -557,6 +558,6 @@ fn revoking_stops_the_agent_and_returns_the_balance() {
     assert_eq!(transfer(&mut c, "ada.near", 5, r#"{"allowance":"bot.ada.near"}"#.into()), 5, "a revoked allowance takes no new money");
     as_caller("ada.near");
     assert!(panics(|| {
-        c.set_allowance(acc("ada.near"), policy(1, 1));
+        c.set_allowance(acc("ada.near"), policy(1, 1), None);
     }), "an owner cannot be its own agent");
 }

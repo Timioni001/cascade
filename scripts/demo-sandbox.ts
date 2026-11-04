@@ -54,7 +54,7 @@ try {
   const k = await checkoutFlow(world, narrator, { dao: t.dao });
   const x = await platformFlow(world, narrator, k);
 
-  console.log(`\n${bold("26. The accountant's CSV (Ada, then the studio)")}`);
+  console.log(`\n${bold("27. The accountant's CSV (Ada, then the studio)")}`);
   for (const csv of [p.csv, t.csv]) {
     for (const row of csv.trim().split("\r\n")) console.log(`  ${dim(row.length > 160 ? row.slice(0, 157) + "..." : row)}`);
     console.log("");
@@ -96,8 +96,10 @@ try {
   check(x.escrow.strangerCannotRelease && x.escrow.payeeCannotRelease, "neither a stranger nor the studio itself can release escrowed money");
   check(x.escrow.studioDelta === 300_000_000n && x.escrow.clientDelta === 500_000_000n && x.escrow.heldAfter === 0n && x.escrow.final?.status === "Closed", "client released $300 to the studio, the studio refunded $500 to the client; escrow closed holding nothing");
   check(x.agent.status === 200 && x.agent.settlement?.success === true && x.agent.receiptRecorded, "an AI agent paid over x402 from its on-chain allowance, gaslessly; the payment has a receipt");
+  check(x.agent.mandate?.owner === "tidelab.cascade.sandbox" && !!x.agent.mandate.purpose, "the agent's receipt shows who authorized it and for what (read from the contract)");
   check(x.agent.overLimitRefused && x.agent.strangerRefused, "the contract refused a payment above the agent's limit, and one to a recipient not on its list");
-  check(x.agent.allowance?.revoked === true && x.agent.ownerRefund === 4_900_000n && x.agent.agentNearSpent === 0n, "revoking returned the unspent $4.90 to the owner; the agent spent no NEAR at all");
+  check(x.agent.mcp.tools.join() === "wallet_status,paid_fetch" && x.agent.mcp.cappedRefused && x.agent.mcp.status === 200 && x.agent.mcp.paid === "0.10", "through the Cascade MCP server, an assistant paid an x402 API from the budget, and refused a call above its cap");
+  check(x.agent.allowance?.revoked === true && x.agent.ownerRefund === 4_800_000n && x.agent.agentNearSpent === 0n, "revoking returned the unspent $4.80 to the owner; the agent spent no NEAR at all");
 } catch (e) {
   exit = 1;
   console.error(red(`\nDemo failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`));

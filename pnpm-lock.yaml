@@ -20,6 +20,9 @@ importers:
       '@cascade/engine':
         specifier: workspace:*
         version: link:packages/engine
+      '@cascade/mcp':
+        specifier: workspace:*
+        version: link:packages/mcp
       '@cascade/near':
         specifier: workspace:*
         version: link:packages/near
@@ -141,6 +144,31 @@ importers:
       near-api-js:
         specifier: 7.4.0
         version: 7.4.0
+
+  packages/mcp:
+    dependencies:
+      '@cascade/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cascade/near':
+        specifier: workspace:*
+        version: link:../near
+      '@cascade/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+    devDependencies:
+      '@cascade/api':
+        specifier: workspace:*
+        version: link:../../services/api
+      '@cascade/db':
+        specifier: workspace:*
+        version: link:../db
+      '@cascade/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@cascade/oneclick':
+        specifier: workspace:*
+        version: link:../oneclick
 
   packages/near:
     dependencies:
