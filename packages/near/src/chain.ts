@@ -115,6 +115,29 @@ export class Chain {
     return parseOutcome(r as unknown as Outcome);
   }
 
+  /**
+   * EVENT_JSON events emitted by `executor` in a finished transaction, only
+   * from its receipts that succeeded. Other contracts in the same transaction
+   * cannot forge them: logs are attributed to the receipt's executor.
+   */
+  async eventsFrom(hash: string, sender: string, executor: string): Promise<CascadeEvent[]> {
+    const o = (await this.provider.viewTransactionStatus({ txHash: hash, accountId: sender, waitUntil: "FINAL" } as never)) as unknown as Outcome;
+    const out: CascadeEvent[] = [];
+    for (const r of o.receipts_outcome) {
+      if (r.outcome.executor_id !== executor) continue;
+      if (typeof r.outcome.status === "object" && r.outcome.status.Failure !== undefined) continue;
+      for (const l of r.outcome.logs) {
+        if (!l.startsWith("EVENT_JSON:")) continue;
+        try {
+          out.push(JSON.parse(l.slice("EVENT_JSON:".length)));
+        } catch {
+          /* not an event */
+        }
+      }
+    }
+    return out;
+  }
+
   async nearBalance(accountId: string): Promise<bigint> {
     const s = await this.account(accountId).getState();
     return BigInt((s as { balance: { available: bigint } }).balance.available);

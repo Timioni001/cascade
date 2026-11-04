@@ -295,7 +295,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
                       <div className="row tiny muted"><span>Includes {session.feeBps / 100}% service fee and network costs</span><span /></div>
                     )}
                     <hr className="divider" />
-                    <div className="row small"><span className="muted">{session.merchant.name} receives</span><strong className="num">${session.amountFormatted}</strong></div>
+                    <div className="row small"><span className="muted">{session.merchant.name} receives</span><strong className="num">${session.amountFormatted}{session.payout ? ` USDC on ${chainName(session.payout.chain)}` : ""}</strong></div>
                   </div>
                   {evm && wallet ? (
                     <button className="btn block" disabled={!preview || busy} onClick={payWithWallet}>
@@ -315,6 +315,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
           )}
 
           {session.split && !paid && <div className="tiny muted">This payment is split automatically between {session.split.shares.length} recipients, on-chain.</div>}
+          {session.escrowId !== null && !paid && <div className="tiny muted">Held in escrow #{session.escrowId} by the Cascade contract and released to {session.merchant.name} milestone by milestone, only with your approval.</div>}
           {error && <div className="error small">{error}</div>}
 
           <div className="row tiny muted" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>

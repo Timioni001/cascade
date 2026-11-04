@@ -5,7 +5,7 @@
  *   const session = await cascade.checkout.create({ amount: "25.00", description: "Poster", reference: order.id });
  *   redirect(session.url);
  */
-import type { CheckoutSession, CreateSessionParams } from "./types.js";
+import type { CheckoutSession, CreateSessionParams, Customer, CustomerSummary, Interval, Invoice, Plan, Subscription } from "./types.js";
 import type { X402PaymentPayload, X402PaymentRequired, X402Settlement } from "./x402.js";
 
 export interface RefundInfo {
@@ -55,7 +55,7 @@ export class Cascade {
   private readonly f: typeof fetch;
 
   constructor(private readonly opts: CascadeOptions) {
-    if (!opts.apiKey?.startsWith("sk_")) throw new Error("Cascade: apiKey must be a secret key (sk_...)");
+    if (!/^(sk|rk)_/.test(opts.apiKey ?? "")) throw new Error("Cascade: apiKey must be a secret key (sk_...) or a read-only key (rk_...)");
     this.base = (opts.baseUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
     this.f = opts.fetch ?? fetch;
   }
@@ -103,7 +103,59 @@ export class Cascade {
   };
 
   readonly merchant = {
-    me: () => this.req<{ id: string; name: string; account: string; webhookUrl: string | null }>("GET", "/v1/merchant"),
+    me: () => this.req<{ id: string; name: string; account: string; webhookUrl: string | null; payout: { chain: string; address: string } | null }>("GET", "/v1/merchant"),
+    /**
+     * Settle future payments as USDC on another chain (null: back to NEAR).
+     * `proof` is a NEP-413 signature of payoutMessage(...) by the merchant's NEAR account.
+     */
+    setPayout: (payout: { chain: string; address: string } | null, proof: SignedProof) => this.req("POST", "/v1/merchant/payout", { payout, proof }),
     update: (p: { name?: string; webhookUrl?: string | null }) => this.req("POST", "/v1/merchant", p),
+    /** Team access: issue a read-only key (rk_..., GET only) for an accountant or a support tool, or another full key. */
+    keys: {
+      create: (p: { role?: "read" | "full"; label?: string } = {}) => this.req<{ key: string; role: string; prefix: string }>("POST", "/v1/merchant/keys", p),
+      list: () => this.req<{ data: { prefix: string; role: string; label: string | null; createdAt: string; revokedAt: string | null }[] }>("GET", "/v1/merchant/keys"),
+      revoke: (prefix: string) => this.req("POST", `/v1/merchant/keys/${encodeURIComponent(prefix)}/revoke`, {}),
+    },
   };
+
+  /** Hosted invoices: line items, a due date, a pay page at invoice.url. Amounts in dollars ("12.50") or base units. */
+  readonly invoices = {
+    create: (p: { customer: Customer; items: { description: string; quantity?: number; unitAmount: string | bigint }[]; dueDate?: string; daysUntilDue?: number; memo?: string }) =>
+      this.req<Invoice>("POST", "/v1/invoices", { ...p, items: p.items.map((i) => ({ ...i, quantity: i.quantity ?? 1, unitAmount: toUnits(i.unitAmount) })) }),
+    retrieve: (id: string) => this.req<Invoice>("GET", `/v1/invoices/${encodeURIComponent(id)}`),
+    list: () => this.req<{ data: Invoice[] }>("GET", "/v1/invoices"),
+    void: (id: string) => this.req<Invoice>("POST", `/v1/invoices/${encodeURIComponent(id)}/void`, {}),
+  };
+
+  /** Recurring billing: a plan, then subscriptions that invoice every interval (or prepay several). */
+  readonly plans = {
+    create: (p: { name: string; amount: string | bigint; interval: Interval }) => this.req<Plan>("POST", "/v1/plans", { ...p, amount: toUnits(p.amount) }),
+    list: () => this.req<{ data: Plan[] }>("GET", "/v1/plans"),
+  };
+
+  readonly subscriptions = {
+    create: (p: { planId: string; customer: Customer; prepaidPeriods?: number }) => this.req<Subscription & { latestInvoice: Invoice }>("POST", "/v1/subscriptions", p),
+    retrieve: (id: string) => this.req<Subscription>("GET", `/v1/subscriptions/${encodeURIComponent(id)}`),
+    list: () => this.req<{ data: Subscription[] }>("GET", "/v1/subscriptions"),
+    cancel: (id: string, opts: { atPeriodEnd?: boolean } = {}) => this.req<Subscription>("POST", `/v1/subscriptions/${encodeURIComponent(id)}/cancel`, opts),
+  };
+
+  readonly customers = {
+    list: () => this.req<{ data: CustomerSummary[] }>("GET", "/v1/customers"),
+  };
+}
+
+/** A NEP-413 signature (base64 fields), as produced by any NEAR wallet's signMessage. */
+export interface SignedProof {
+  signer: string;
+  publicKey: string;
+  signature: string;
+  nonce: string;
+  issuedAt: string;
+}
+
+/** The text a merchant signs (NEP-413, recipient "cascade-checkout") to change where its payments settle. */
+export function payoutMessage(p: { account: string; payout: { chain: string; address: string } | null; issuedAt: string }): string {
+  const to = p.payout ? `USDC on ${p.payout.chain} to ${p.payout.address}` : `USDC on near to ${p.account}`;
+  return `Cascade Checkout payout\naccount: ${p.account}\nsettle: ${to}\nissued: ${p.issuedAt}`;
 }

@@ -47,6 +47,11 @@ export class Relayer {
   private readonly reader: CascadeReader;
   private readonly daoCache = new Map<string, boolean>();
 
+  /** The account that signs and pays for every relayed transaction. */
+  get account(): string {
+    return this.d.payer.accountId;
+  }
+
   constructor(private readonly d: RelayerDeps) {
     this.limits = { ...DEFAULT_LIMITS, ...d.limits };
     this.limiter = d.limiter ?? new RateLimiter();

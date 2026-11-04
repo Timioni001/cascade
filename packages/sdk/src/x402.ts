@@ -38,6 +38,13 @@ export interface X402Requirement {
     decimals: number;
     amountUsd: string;
     memo?: string;
+    /**
+     * Set when the requirement is paid by calling a contract instead of sending
+     * to an address: "agent_pay" means `contract.agent_pay(owner, payTo, amount, memo)`
+     * from an on-chain allowance with spending limits (NEAR only).
+     */
+    method?: "agent_pay";
+    contract?: string;
   };
 }
 
@@ -52,7 +59,8 @@ export interface X402PaymentPayload {
   x402Version: 2;
   resource: X402PaymentRequired["resource"];
   accepted: X402Requirement;
-  payload: { txHash: string };
+  /** `sender`: the account that signed the transaction (for NEAR lookups: the relayer when the agent paid gaslessly). */
+  payload: { txHash: string; sender?: string };
 }
 
 export interface X402Settlement {
@@ -141,8 +149,8 @@ export function x402Guard(cascade: Cascade, opts: GuardOptions) {
 // ------------------------------------------------------------ client
 
 export interface PayOptions {
-  /** Send the funds for `req` and return the transaction hash. */
-  pay: (req: X402Requirement, required: X402PaymentRequired) => Promise<string>;
+  /** Send the funds for `req`; return the transaction hash (and, on NEAR, the transaction's signer). */
+  pay: (req: X402Requirement, required: X402PaymentRequired) => Promise<string | { txHash: string; sender: string }>;
   /** Pick which requirement to pay (default: the first). */
   choose?: (accepts: X402Requirement[]) => X402Requirement;
   /** Your refund address on the chain you pay from (recommended). */
@@ -167,8 +175,9 @@ export async function fetchWithPayment(input: string, init: RequestInit = {}, o:
   const required = decodeHeader<X402PaymentRequired>(h);
   if (required.x402Version !== X402_VERSION || !required.accepts.length) throw new X402Error("unsupported payment requirements");
   const req = o.choose ? o.choose(required.accepts) : required.accepts[0]!;
-  const txHash = await o.pay(req, required);
-  const sig = encodeHeader({ x402Version: 2, resource: required.resource, accepted: req, payload: { txHash } } satisfies X402PaymentPayload);
+  const paid = await o.pay(req, required);
+  const payload = typeof paid === "string" ? { txHash: paid } : paid;
+  const sig = encodeHeader({ x402Version: 2, resource: required.resource, accepted: req, payload } satisfies X402PaymentPayload);
   const until = Date.now() + (o.timeoutMs ?? 180_000);
   for (;;) {
     const r = await f(input, withHeaders({ [X402_HEADERS.signature]: sig }));

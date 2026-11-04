@@ -1,4 +1,4 @@
-import type { AppConfig, Batch, Invoice, Line, Owner, SplitRule } from "@cascade/core";
+import type { Allowance, AppConfig, Batch, Escrow, Invoice, Line, Owner, SplitRule } from "@cascade/core";
 import type { Proposal, Policy } from "@cascade/sputnik";
 import type { Chain } from "./chain.js";
 
@@ -25,6 +25,12 @@ export class CascadeReader {
   }
   split(id: number) {
     return this.chain.view<SplitRule | null>(this.app, "get_split", { id });
+  }
+  escrow(id: number) {
+    return this.chain.view<Escrow | null>(this.app, "get_escrow", { id });
+  }
+  allowance(owner: string, agent: string) {
+    return this.chain.view<Allowance | null>(this.app, "get_allowance", { owner, agent });
   }
   isDepositRecorded(depositAddress: string) {
     return this.chain.view<boolean>(this.app, "is_deposit_recorded", { deposit_address: depositAddress });

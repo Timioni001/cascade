@@ -1,5 +1,5 @@
 import { actions, type Action } from "near-api-js";
-import type { FundMsg, LineInput, OwnerKind, Share } from "@cascade/core";
+import type { AllowancePolicy, FundMsg, LineInput, MilestoneInput, OwnerKind, Share } from "@cascade/core";
 import { actProposalArgs, type ProposalInput, type ProposalKind, type VoteAction } from "@cascade/sputnik";
 
 /**
@@ -43,6 +43,17 @@ export function appCalls(app: string) {
       fc(app, `pay up to ${limit} lines of batch #${id}`, "execute_batch", { id, limit }, 300n * TGAS),
     refundFailed: (id: number) => fc(app, `refund failed lines of batch #${id}`, "refund_failed", { id }, 100n * TGAS),
     createSplit: (owner: string, shares: Share[]) => fc(app, `create a revenue split for ${owner}`, "create_split", { owner, shares }, 30n * TGAS),
+    createEscrow: (p: { payee: string; payer: string; arbiter?: string | null; milestones: MilestoneInput[]; refundAfterMs: number; metadataHash: string }) =>
+      fc(app, `create an escrow ${p.payer} -> ${p.payee}`, "create_escrow", {
+        payee: p.payee, payer: p.payer, arbiter: p.arbiter ?? null, milestones: p.milestones, refund_after_ms: p.refundAfterMs, metadata_hash: p.metadataHash,
+      }, 30n * TGAS),
+    cancelEscrow: (id: number) => fc(app, `cancel escrow #${id}`, "cancel_escrow", { id }, 20n * TGAS),
+    releaseMilestone: (id: number, idx: number) => fc(app, `release milestone ${idx + 1} of escrow #${id}`, "release_milestone", { id, idx }, 80n * TGAS),
+    refundMilestone: (id: number, idx: number) => fc(app, `refund milestone ${idx + 1} of escrow #${id}`, "refund_milestone", { id, idx }, 80n * TGAS),
+    setAllowance: (agent: string, policy: AllowancePolicy) => fc(app, `set spending limits for ${agent}`, "set_allowance", { agent, policy }, 20n * TGAS),
+    agentPay: (owner: string, to: string, amount: bigint, memo: string) =>
+      fc(app, `pay ${amount} to ${to} from ${owner}'s allowance`, "agent_pay", { owner, to, amount: amount.toString(), memo }, 80n * TGAS),
+    revokeAllowance: (agent: string) => fc(app, `revoke ${agent}`, "revoke_allowance", { agent }, 50n * TGAS),
   };
 }
 
@@ -54,6 +65,12 @@ export function ftCalls(token: string) {
     /** Pay into a revenue split (what 1Click does with customRecipientMsg). */
     payToSplit: (app: string, amount: bigint, splitId: number) =>
       fc(token, `pay ${amount} into split #${splitId}`, "ft_transfer_call", { receiver_id: app, amount: amount.toString(), msg: JSON.stringify({ split: splitId }) }, 100n * TGAS, 1n),
+    /** Fund an escrow for exactly its total (anyone may; 1Click does it for a checkout). */
+    fundEscrow: (app: string, amount: bigint, escrowId: number) =>
+      fc(token, `fund escrow #${escrowId}`, "ft_transfer_call", { receiver_id: app, amount: amount.toString(), msg: JSON.stringify({ escrow: escrowId }) }, 100n * TGAS, 1n),
+    /** Top up an agent's allowance (the caller is the owner). */
+    fundAllowance: (app: string, amount: bigint, agent: string) =>
+      fc(token, `top up ${agent}'s allowance`, "ft_transfer_call", { receiver_id: app, amount: amount.toString(), msg: JSON.stringify({ allowance: agent }) }, 100n * TGAS, 1n),
     transfer: (to: string, amount: bigint, memo?: string) =>
       fc(token, `send ${amount} to ${to}`, "ft_transfer", { receiver_id: to, amount: amount.toString(), ...(memo ? { memo } : {}) }, 15n * TGAS, 1n),
     storageDeposit: (account: string, deposit = 1_250_000_000_000_000_000_000n) =>

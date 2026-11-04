@@ -12,11 +12,11 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { verifyMessage } from "near-api-js/nep413";
-import { assetSymbol, formatUsd, hashDocument, isAccountId } from "@cascade/core";
-import type { CheckoutSessionRecord, Merchant, PaymentRecord, Store, WebhookDelivery } from "@cascade/db";
+import { CHAINS, USDC_BY_CHAIN, assetSymbol, formatUsd, hashDocument, isAccountId } from "@cascade/core";
+import type { ApiKey, CheckoutSessionRecord, KeyRole, Merchant, PaymentRecord, Payout, Store, WebhookDelivery } from "@cascade/db";
 import { CascadeReader, type Chain } from "@cascade/near";
 import { incomingQuote, type OneClick, type Token } from "@cascade/oneclick";
-import { signWebhook, SIGNATURE_HEADER, type CheckoutSession, type PayAsset, type PaymentPreview, type WebhookEvent, type WebhookEventType } from "@cascade/sdk";
+import { payoutMessage, signWebhook, SIGNATURE_HEADER, type CheckoutSession, type PayAsset, type PaymentPreview, type WebhookEvent, type CheckoutEventType } from "@cascade/sdk";
 
 export class CheckoutError extends Error {
   constructor(
@@ -56,6 +56,17 @@ export function onboardingMessage(p: { account: string; name: string; issuedAt: 
   return `Cascade Checkout merchant onboarding\naccount: ${p.account}\nname: ${p.name}\nissued: ${p.issuedAt}`;
 }
 
+export { payoutMessage };
+
+/** Payout destinations: USDC on these chains (1Click delivers it directly). */
+export const PAYOUT_CHAINS = Object.keys(USDC_BY_CHAIN);
+
+export function validatePayout(p: Payout): void {
+  if (!PAYOUT_CHAINS.includes(p.chain)) throw new CheckoutError(400, `payout chain must be one of ${PAYOUT_CHAINS.join(", ")}`);
+  const ok = p.chain === "near" ? isAccountId(p.address) : CHAINS[p.chain]!.address.test(p.address);
+  if (!ok) throw new CheckoutError(400, `not a ${CHAINS[p.chain]?.name ?? p.chain} address`);
+}
+
 export interface OnboardingProof {
   signer: string; // NEAR account that signed (the owner, or a preparer of a DAO owner)
   publicKey: string; // ed25519:...
@@ -80,6 +91,10 @@ export interface CheckoutConfig {
    * amount the merchant receives. `recipient` is an account inside NEAR Intents.
    */
   fee?: { recipient: string; bps: number };
+  /** USDC token contract on NEAR: enables agents paying directly from an on-chain allowance (x402). */
+  usdc?: string;
+  /** The relayer account: it signs agents' gasless payments, so it is where their transactions are looked up. */
+  relayer?: string;
 }
 
 export interface NewSession {
@@ -92,6 +107,8 @@ export interface NewSession {
   expiresInMinutes?: number;
   /** On-chain revenue split (create_split) that receives the payment instead of the merchant account. */
   splitId?: number;
+  /** On-chain escrow (payee = this merchant) the payment funds; amount must equal its total. */
+  escrowId?: number;
 }
 
 /** How a quote's refunds are routed: to the payer on their chain, or (x402 without an address) into the merchant's Intents account. */
@@ -101,6 +118,8 @@ export class Checkout {
   readonly reader: CascadeReader;
   private readonly now: () => number;
   private assetsCache: { at: number; assets: PayAsset[] } | null = null;
+  /** Called once when a session becomes paid (billing closes invoices here). Must be idempotent. */
+  readonly onPaid: ((s: CheckoutSessionRecord) => Promise<void>)[] = [];
 
   constructor(readonly cfg: CheckoutConfig) {
     this.reader = new CascadeReader(cfg.chain, cfg.app);
@@ -139,9 +158,7 @@ export class Checkout {
     if (!isAccountId(p.account)) throw new CheckoutError(400, "account is not a NEAR account id");
     if (name.length < 2 || name.length > 80) throw new CheckoutError(400, "name must be 2-80 characters");
     if (p.webhookUrl) validateWebhookUrl(p.webhookUrl);
-    const issued = Date.parse(p.proof.issuedAt);
-    if (!Number.isFinite(issued) || Math.abs(this.now() - issued) > 10 * 60_000) throw new CheckoutError(400, "proof is expired or from the future");
-    if (Buffer.from(p.proof.nonce, "base64").length !== 32) throw new CheckoutError(400, "nonce must be 32 bytes");
+    this.checkProofShape(p.proof);
 
     const owner = await this.reader.owner(p.account);
     if (!owner) throw new CheckoutError(400, `${p.account} is not registered with Cascade`);
@@ -167,20 +184,77 @@ export class Checkout {
     return { merchant, secretKey: await this.issueKey(merchant.id) };
   }
 
-  async issueKey(merchantId: string): Promise<string> {
-    const key = randomId(`sk_${this.cfg.keyMode ?? "test"}_`, 24);
-    await this.cfg.store.putApiKey({ hash: sha256Hex(key), prefix: key.slice(0, 12), merchantId, createdAt: this.iso(), revokedAt: null });
+  private checkProofShape(proof: OnboardingProof) {
+    const issued = Date.parse(proof.issuedAt);
+    if (!Number.isFinite(issued) || Math.abs(this.now() - issued) > 10 * 60_000) throw new CheckoutError(400, "proof is expired or from the future");
+    if (Buffer.from(proof.nonce, "base64").length !== 32) throw new CheckoutError(400, "nonce must be 32 bytes");
+  }
+
+  /**
+   * Change where checkout payments settle. Needs a NEP-413 signature from the
+   * merchant's account (or a DAO preparer), not just the secret key. Sessions
+   * already created keep the destination they were created with.
+   */
+  async setPayout(m: Merchant, payout: Payout | null, proof: OnboardingProof): Promise<Merchant> {
+    if (payout?.chain === "near" && payout.address === m.account) payout = null;
+    if (payout) validatePayout(payout);
+    this.checkProofShape(proof);
+    const owner = await this.reader.owner(m.account);
+    const allowed = proof.signer === m.account || (owner?.kind === "Dao" && owner.preparers.includes(proof.signer));
+    if (!allowed) throw new CheckoutError(403, `${proof.signer} cannot act for ${m.account}`);
+    if (!(await this.verify(proof, payoutMessage({ account: m.account, payout, issuedAt: proof.issuedAt })))) {
+      throw new CheckoutError(401, "signature does not verify for that account and key");
+    }
+    if (!(await this.cfg.store.claimOnce(`nep413:${proof.nonce}`, 20 * 60_000, this.now()))) throw new CheckoutError(400, "proof already used");
+    const next = { ...m, payout };
+    await this.cfg.store.putMerchant(next);
+    return next;
+  }
+
+  /** Issue a secret key. Only its hash is stored; the key itself is returned once. */
+  async issueKey(merchantId: string, role: KeyRole = "full", label: string | null = null): Promise<string> {
+    if (role !== "full" && role !== "read") throw new CheckoutError(400, "role must be full or read");
+    if (label !== null && label.length > 60) throw new CheckoutError(400, "label is at most 60 characters");
+    // Read-only keys look different, so they are easy to tell apart in config files.
+    const key = randomId(`${role === "read" ? "rk" : "sk"}_${this.cfg.keyMode ?? "test"}_`, 24);
+    const rec: ApiKey = { hash: sha256Hex(key), prefix: key.slice(0, 14), merchantId, createdAt: this.iso(), revokedAt: null, role, label };
+    await this.cfg.store.putApiKey(rec);
+    await this.cfg.store.putDoc("apikey", rec.prefix, merchantId, rec);
     return key;
   }
 
+  async listKeys(m: Merchant): Promise<Omit<ApiKey, "hash">[]> {
+    const keys = await this.cfg.store.listDocs<ApiKey>("apikey", m.id);
+    return Promise.all(keys.map(async (k) => {
+      const live = (await this.cfg.store.getApiKey(k.hash)) ?? k;
+      const { hash: _h, ...rest } = live;
+      return { ...rest, role: live.role ?? "full" };
+    }));
+  }
+
+  /** Revoke a key by its prefix. A key cannot revoke itself (so a merchant cannot lock itself out by mistake). */
+  async revokeKey(m: Merchant, prefix: string, current: string): Promise<void> {
+    const k = await this.cfg.store.getDoc<ApiKey>("apikey", prefix);
+    if (!k || k.merchantId !== m.id) throw new CheckoutError(404, "no such key");
+    if (k.hash === current) throw new CheckoutError(400, "a key cannot revoke itself");
+    const live = (await this.cfg.store.getApiKey(k.hash)) ?? k;
+    await this.cfg.store.putApiKey({ ...live, revokedAt: live.revokedAt ?? this.iso() });
+  }
+
   async authenticate(authorization: string | undefined | null): Promise<Merchant> {
+    return (await this.authenticateKey(authorization)).merchant;
+  }
+
+  /** The merchant and the key's role. Secret keys start with sk_, read-only keys with rk_. */
+  async authenticateKey(authorization: string | undefined | null): Promise<{ merchant: Merchant; role: KeyRole; hash: string }> {
     const key = authorization?.replace(/^Bearer\s+/i, "").trim();
-    if (!key?.startsWith("sk_")) throw new CheckoutError(401, "missing or malformed secret key");
-    const rec = await this.cfg.store.getApiKey(sha256Hex(key));
+    if (!key || !/^(sk|rk)_/.test(key)) throw new CheckoutError(401, "missing or malformed secret key");
+    const hash = sha256Hex(key);
+    const rec = await this.cfg.store.getApiKey(hash);
     if (!rec || rec.revokedAt) throw new CheckoutError(401, "invalid secret key");
     const m = await this.cfg.store.getMerchant(rec.merchantId);
     if (!m) throw new CheckoutError(401, "invalid secret key");
-    return m;
+    return { merchant: m, role: rec.role ?? "full", hash };
   }
 
   async updateMerchant(m: Merchant, p: { name?: string; webhookUrl?: string | null }): Promise<Merchant> {
@@ -215,6 +289,16 @@ export class Checkout {
       if (!split) throw new CheckoutError(400, "no such split");
       if (split.owner !== m.account) throw new CheckoutError(403, "that split belongs to another owner");
     }
+    if (p.escrowId !== undefined) {
+      if (p.splitId !== undefined) throw new CheckoutError(400, "a session pays a split or an escrow, not both");
+      await this.checkEscrowFundable(m, p.escrowId, p.amount);
+      // One open session per escrow: a second delivery would be refused by the contract.
+      for (const o of await this.cfg.store.listSessions(m.id, 1000)) {
+        if (o.escrowId === p.escrowId && (o.status === "open" || o.status === "processing") && Date.parse(o.expiresAt) > this.now()) {
+          throw new CheckoutError(409, `escrow #${p.escrowId} already has an open checkout session (${o.id})`);
+        }
+      }
+    }
     const minutes = Math.min(Math.max(p.expiresInMinutes ?? 60, 5), 1440);
     const s: CheckoutSessionRecord = {
       id: randomId("cs_"),
@@ -235,9 +319,20 @@ export class Checkout {
       expiresAt: this.iso(this.now() + minutes * 60_000),
       paidAt: null,
       splitId: p.splitId ?? null,
+      escrowId: p.escrowId ?? null,
+      // Splits and escrows settle into the contract on NEAR; otherwise the merchant's preference applies.
+      payout: p.splitId !== undefined || p.escrowId !== undefined ? null : (m.payout ?? null),
     };
     await this.cfg.store.putSession(s);
     return s;
+  }
+
+  private async checkEscrowFundable(m: Pick<Merchant, "account">, id: number, amount: string) {
+    const e = Number.isInteger(id) && id >= 0 ? await this.reader.escrow(id) : null;
+    if (!e) throw new CheckoutError(400, "no such escrow");
+    if (e.payee !== m.account) throw new CheckoutError(403, "that escrow pays someone else");
+    if (e.status !== "AwaitingFunds") throw new CheckoutError(409, `escrow #${id} is ${e.status}`);
+    if (e.total !== amount) throw new CheckoutError(400, `amount must equal the escrow total (${e.total})`);
   }
 
   async getSession(id: string): Promise<CheckoutSessionRecord> {
@@ -280,6 +375,8 @@ export class Checkout {
           : null,
       receipt: s.receiptId !== null ? { id: s.receiptId, nearTx: s.nearTx, contract: this.cfg.app } : null,
       split: s.splitId !== null && s.splitId !== undefined ? { id: s.splitId, shares: (await this.splitShares(s.splitId)) ?? [] } : null,
+      escrowId: s.escrowId ?? null,
+      payout: s.payout ?? null,
       feeBps: this.cfg.fee?.bps ?? 0,
       createdAt: s.createdAt,
       expiresAt: s.expiresAt,
@@ -306,15 +403,19 @@ export class Checkout {
    */
   quoteFor(s: CheckoutSessionRecord, a: PayAsset, refund: RefundRoute, dry: boolean) {
     const split = s.splitId !== null && s.splitId !== undefined;
+    const escrow = s.escrowId !== null && s.escrowId !== undefined;
+    const payout = !split && !escrow ? (s.payout ?? null) : null;
+    const msg = split ? JSON.stringify({ split: s.splitId }) : escrow ? JSON.stringify({ escrow: s.escrowId }) : null;
     return incomingQuote({
       payAsset: a.assetId,
-      owner: split ? this.cfg.app : s.owner,
+      owner: msg ? this.cfg.app : (payout?.address ?? s.owner),
+      ...(payout ? { destAsset: USDC_BY_CHAIN[payout.chain]! } : {}),
       amountOut: BigInt(s.amount),
       refundTo: refund.refundTo,
       refundType: refund.type,
       dry,
       now: this.now(),
-      ...(split ? { recipientMsg: JSON.stringify({ split: s.splitId }) } : {}),
+      ...(msg ? { recipientMsg: msg } : {}),
       ...(this.cfg.fee ? { appFee: this.cfg.fee } : {}),
     });
   }
@@ -369,12 +470,14 @@ export class Checkout {
     this.assertPayable(s);
     const fresh = await this.getSession(s.id);
     if (fresh.attempts.length >= MAX_ATTEMPTS) throw new CheckoutError(429, "too many payment attempts for this session");
+    // Re-check right before money can move: the escrow must still be waiting for exactly this amount.
+    if (fresh.escrowId !== null && fresh.escrowId !== undefined) await this.checkEscrowFundable({ account: fresh.owner }, fresh.escrowId, fresh.amount);
     const q = await this.cfg.oneclick.quote(this.quoteFor(fresh, a, refund, false));
     const dep = q.quote.depositAddress;
     if (!dep) throw new CheckoutError(502, "1Click returned no deposit address");
     const rec: PaymentRecord = {
       depositAddress: dep, direction: "in", owner: s.owner, invoiceId: null, sessionId: s.id, batchId: null, lineIdx: null,
-      counterparty: s.reference ? `checkout ${s.reference}` : `checkout ${s.id}`, originChain: a.chain, destChain: "near", quote: q,
+      counterparty: s.reference ? `checkout ${s.reference}` : `checkout ${s.id}`, originChain: a.chain, destChain: s.payout?.chain ?? "near", quote: q,
       status: "PENDING_DEPOSIT", recorded: false, nearTx: null, destTx: null, amountOut: null, refundReason: null,
       createdAt: this.iso(), updatedAt: this.iso(),
     };
@@ -435,8 +538,9 @@ export class Checkout {
   }
 
   /** Hash bound into the on-chain receipt: proves which session a receipt paid. */
-  static receiptHash(s: Pick<CheckoutSessionRecord, "id" | "merchantId" | "amount" | "reference">): string {
-    return hashDocument({ kind: "checkout", session: s.id, merchant: s.merchantId, amount: s.amount, reference: s.reference });
+  static receiptHash(s: Pick<CheckoutSessionRecord, "id" | "merchantId" | "amount" | "reference" | "payout">): string {
+    // The destination is bound in too when it is not the default, so a receipt also proves where the money went.
+    return hashDocument({ kind: "checkout", session: s.id, merchant: s.merchantId, amount: s.amount, reference: s.reference, ...(s.payout ? { payout: s.payout } : {}) });
   }
 
   // ------------------------------------------------------------ settler hooks
@@ -449,6 +553,7 @@ export class Checkout {
     const paid: CheckoutSessionRecord = { ...s, status: "paid", receiptId, nearTx, paidAt: this.iso() };
     await this.cfg.store.putSession(paid);
     await this.enqueue(paid, "checkout.session.completed");
+    for (const f of this.onPaid) await f(paid);
   }
 
   /** 1Click refunded a session payment to the payer; the session stays open for another try. */
@@ -480,15 +585,20 @@ export class Checkout {
   // ------------------------------------------------------------ webhooks
 
   /** Queue a signed webhook for the session's merchant (no-op if they have no webhook URL). */
-  async enqueue(s: CheckoutSessionRecord, type: WebhookEventType, refundReason?: string, refund?: { id: string; amount: string; destTx: string | null }) {
-    const m = await this.cfg.store.getMerchant(s.merchantId);
-    if (!m?.webhookUrl) return;
-    const event: WebhookEvent = {
+  async enqueue(s: CheckoutSessionRecord, type: CheckoutEventType, refundReason?: string, refund?: { id: string; amount: string; destTx: string | null }) {
+    await this.enqueueEvent(s.merchantId, {
       id: randomId("evt_"),
       type,
       created: this.iso(),
       data: { session: await this.view(s), ...(refundReason ? { refundReason } : {}), ...(refund ? { refund } : {}) },
-    };
+    });
+  }
+
+  /** Queue any signed event for a merchant (no-op without a webhook URL). */
+  async enqueueEvent(merchantId: string, event: WebhookEvent) {
+    const m = await this.cfg.store.getMerchant(merchantId);
+    if (!m?.webhookUrl) return;
+    const type = event.type;
     const d: WebhookDelivery = {
       id: event.id, merchantId: m.id, type, body: JSON.stringify(event), attempts: 0,
       nextAttemptAt: this.iso(), status: "pending", lastError: null, createdAt: this.iso(),
@@ -550,7 +660,12 @@ export function validateWebhookUrl(u: string): void {
 }
 
 /** Plug checkout (and refunds) into the settler (services/settler SettlerHooks). */
-export function checkoutHooks(c: Checkout, f: typeof fetch = fetch, refunds?: { onOutgoing(rec: PaymentRecord): Promise<void>; refreshFunding(): Promise<void> }) {
+export function checkoutHooks(
+  c: Checkout,
+  f: typeof fetch = fetch,
+  refunds?: { onOutgoing(rec: PaymentRecord): Promise<void>; refreshFunding(): Promise<void> },
+  billing?: { tick(): Promise<unknown> },
+) {
   return {
     receiptHash: async (rec: PaymentRecord) => {
       if (!rec.sessionId || rec.direction !== "in") return null;
@@ -564,6 +679,7 @@ export function checkoutHooks(c: Checkout, f: typeof fetch = fetch, refunds?: { 
     },
     afterTick: async () => {
       await refunds?.refreshFunding();
+      await billing?.tick();
       await c.expireSessions();
       await c.deliverWebhooks(f);
     },

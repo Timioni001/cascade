@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS refunds (id TEXT PRIMARY KEY, session_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS claims (key TEXT PRIMARY KEY, until INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, win INTEGER NOT NULL, count INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS kv (ns TEXT NOT NULL, key TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (ns, key));
+CREATE TABLE IF NOT EXISTS docs (kind TEXT NOT NULL, id TEXT NOT NULL, merchant_id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id));
+CREATE INDEX IF NOT EXISTS docs_merchant ON docs(kind, merchant_id);
 `.trim();
 
 export type Row = Record<string, unknown>;
@@ -147,6 +149,22 @@ export class SqlStore implements Store {
   }
   listWebhooks(merchantId: string) {
     return this.many<WebhookDelivery>("SELECT doc FROM webhooks WHERE merchant_id = ? ORDER BY next_at", merchantId);
+  }
+
+  async putDoc<T>(kind: string, id: string, merchantId: string, doc: T) {
+    // Upsert keeps the row (and so its rowid order) when a document is updated.
+    await this.db.run(
+      "INSERT INTO docs (kind, id, merchant_id, doc) VALUES (?, ?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET doc = excluded.doc, merchant_id = excluded.merchant_id",
+      kind, id, merchantId, JSON.stringify(doc),
+    );
+  }
+  getDoc<T>(kind: string, id: string) {
+    return this.one<T>("SELECT doc FROM docs WHERE kind = ? AND id = ?", kind, id);
+  }
+  listDocs<T>(kind: string, merchantId?: string) {
+    return merchantId === undefined
+      ? this.many<T>("SELECT doc FROM docs WHERE kind = ? ORDER BY rowid", kind)
+      : this.many<T>("SELECT doc FROM docs WHERE kind = ? AND merchant_id = ? ORDER BY rowid", kind, merchantId);
   }
 
   async claimOnce(key: string, ttlMs: number, now: number) {

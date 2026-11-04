@@ -71,6 +71,16 @@ export interface Merchant {
   /** NEAR account that proved control when onboarding (the DAO's preparer, or the person) */
   verifiedBy: string;
   createdAt: string;
+  /**
+   * Where checkout payments settle: USDC on `chain` at `address`. Null: USDC on
+   * NEAR in `account`. Changing it needs a signature from `account` (NEP-413).
+   */
+  payout?: Payout | null;
+}
+
+export interface Payout {
+  chain: string;
+  address: string;
 }
 
 export interface ApiKey {
@@ -79,7 +89,12 @@ export interface ApiKey {
   merchantId: string;
   createdAt: string;
   revokedAt: string | null;
+  /** "full" (default): everything. "read": GET requests only, e.g. for an accountant or a support tool. */
+  role?: KeyRole;
+  label?: string | null;
 }
+
+export type KeyRole = "full" | "read";
 
 export type SessionState = "open" | "processing" | "paid" | "expired";
 
@@ -104,6 +119,10 @@ export interface CheckoutSessionRecord {
   paidAt: string | null;
   /** Revenue split (on-chain split id) this session pays into. */
   splitId?: number | null;
+  /** On-chain escrow this session funds (1Click delivers into the contract with msg {"escrow": id}). */
+  escrowId?: number | null;
+  /** Payout destination when the session was created (null: USDC on NEAR to the owner). */
+  payout?: Payout | null;
   /** x402: the "METHOD url" this session pays for, and when the payment was used. */
   x402Resource?: string | null;
   consumedAt?: string | null;
@@ -196,6 +215,15 @@ export interface Store {
    * count in the window of `windowMs` containing `now`, and returns the count.
    */
   hit(key: string, windowMs: number, now: number, add?: number): Promise<number>;
+
+  /**
+   * Merchant-scoped documents by kind ("invoice", "plan", "subscription"...):
+   * features added after the core tables, without a store method each.
+   */
+  putDoc<T>(kind: string, id: string, merchantId: string, doc: T): Promise<void>;
+  getDoc<T>(kind: string, id: string): Promise<T | null>;
+  /** Oldest first. Without `merchantId`: every merchant's (for background jobs). */
+  listDocs<T>(kind: string, merchantId?: string): Promise<T[]>;
 }
 
 const TERMINAL = new Set<ExecutionStatus>(["SUCCESS", "REFUNDED", "FAILED"]);

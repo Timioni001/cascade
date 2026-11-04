@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Download, FileText, LayoutGrid, Link2, Loader2, LogOut, Plus, ReceiptText, RefreshCw, Undo2, Webhook } from "lucide-react";
+import { ArrowUpRight, Download, FileText, LayoutGrid, Link2, Loader2, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Settings2, Undo2, Users, Webhook } from "lucide-react";
 import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
-import { Badge, Brand, DemoBanner, toneOf, usd } from "../components/ui";
+import { Badge, Brand, DemoBanner, chainName, toneOf, usd } from "../components/ui";
 import { API } from "../../lib/api";
+import { call } from "./api";
+import { CustomersTab, InvoicesTab, SubscriptionsTab } from "./Billing";
+import { SettingsTab } from "./Settings";
 
 type Webhook = { id: string; type: string; status: string; attempts: number; lastError: string | null; createdAt: string };
-type Me = { name: string; account: string; webhookUrl: string | null };
-type Tab = "overview" | "payments" | "webhooks" | "reports";
+type Me = { name: string; account: string; webhookUrl: string | null; payout: { chain: string; address: string } | null };
+type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "webhooks" | "reports" | "settings";
 
 const KEY = "cascade_dashboard_key";
 const readKey = () => {
@@ -18,18 +21,6 @@ const readKey = () => {
     return "";
   }
 };
-
-async function call<T>(key: string, path: string, body?: unknown): Promise<T> {
-  // Same origin as the API, so the secret key goes straight to it (it is kept in this tab's sessionStorage only).
-  const r = await fetch(`${API}/v1/${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    headers: { authorization: `Bearer ${key}`, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const j = (await r.json().catch(() => ({}))) as T & { error?: { message: string } };
-  if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
-  return j;
-}
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -64,7 +55,7 @@ function Chart({ sessions }: { sessions: CheckoutSession[] }) {
         return (
           <div key={d.label + i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, height: "100%", justifyContent: "flex-end" }}>
             <div className="tiny muted num" style={{ opacity: d.total ? 1 : 0 }}>{usd(d.total)}</div>
-            <div title={usd(d.total)} style={{ width: "100%", maxWidth: 46, height: `${Math.max(6, (d.total / max) * 130)}px`, borderRadius: 999, background: today ? "var(--accent)" : d.total ? "#3a3a3f" : "var(--card-2)", transition: "height .4s ease" }} />
+            <div title={usd(d.total)} style={{ width: "100%", maxWidth: 46, height: `${Math.max(6, (d.total / max) * 130)}px`, borderRadius: 999, background: today ? "var(--accent)" : d.total ? "var(--line-strong)" : "var(--card-2)", transition: "height .4s ease" }} />
             <div className="tiny" style={{ color: today ? "var(--ink)" : "var(--muted)" }}>{d.label}</div>
           </div>
         );
@@ -187,10 +178,10 @@ export default function Dashboard() {
           <div className="card raised stack-lg">
             <div>
               <h1 className="h1">Merchant dashboard</h1>
-              <p className="soft small" style={{ margin: "8px 0 0" }}>Paste your secret key (sk_…). It stays in this browser tab and is sent to the Cascade API through this site&apos;s server.</p>
+              <p className="soft small" style={{ margin: "8px 0 0" }}>Paste your secret key (sk_…). It stays in this browser tab and is sent only to the Cascade API.</p>
             </div>
-            <input className="input" type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="sk_live_…" aria-label="Secret key" />
-            <button className="btn block" disabled={!input.startsWith("sk_")} onClick={() => { try { sessionStorage.setItem(KEY, input); } catch { /* private mode */ } setKey(input); }}>Open dashboard</button>
+            <input className="input" type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="sk_live_… or a read-only rk_live_…" aria-label="Secret key" />
+            <button className="btn block" disabled={!/^(sk|rk)_/.test(input)} onClick={() => { try { sessionStorage.setItem(KEY, input); } catch { /* private mode */ } setKey(input); }}>Open dashboard</button>
           </div>
         </main>
       </div>
@@ -200,8 +191,12 @@ export default function Dashboard() {
   const nav: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
     { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "payments", label: "Payments", icon: FileText },
+    { id: "invoices", label: "Invoices", icon: ScrollText },
+    { id: "subscriptions", label: "Subscriptions", icon: Repeat },
+    { id: "customers", label: "Customers", icon: Users },
     { id: "webhooks", label: "Webhooks", icon: Webhook },
     { id: "reports", label: "Reports", icon: Download },
+    { id: "settings", label: "Settings", icon: Settings2 },
   ];
 
   return (
@@ -225,7 +220,7 @@ export default function Dashboard() {
           <div className="row" style={{ flexWrap: "wrap" }}>
             <div>
               <div className="h1">{greeting()}, {me?.name ?? "…"}</div>
-              <div className="small muted" style={{ marginTop: 4 }}>Paid out to <span className="mono">{me?.account}</span></div>
+              <div className="small muted" style={{ marginTop: 4 }}>Settles as USDC {me?.payout ? <>on {chainName(me.payout.chain)} to <span className="mono">{me.payout.address}</span></> : <>on NEAR to <span className="mono">{me?.account}</span></>}</div>
             </div>
             <div className="row-start">
               <button className="icon-btn" onClick={() => void load()} aria-label="Refresh">{loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}</button>
@@ -309,6 +304,11 @@ export default function Dashboard() {
               )}
             </>
           )}
+
+          {tab === "invoices" && <InvoicesTab secret={key} onError={setError} />}
+          {tab === "subscriptions" && <SubscriptionsTab secret={key} onError={setError} />}
+          {tab === "customers" && <CustomersTab secret={key} onError={setError} />}
+          {tab === "settings" && me && <SettingsTab secret={key} payout={me.payout} account={me.account} onError={setError} />}
 
           {tab === "webhooks" && (
             <div className="card">

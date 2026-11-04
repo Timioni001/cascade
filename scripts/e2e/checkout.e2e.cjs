@@ -86,6 +86,43 @@ const assert = (c, m) => {
     await d.click("button:has-text('Refund') >> nth=0");
     await d.waitForSelector("text=create_batch");
     await d.screenshot({ path: `${out}/9-dashboard-refund.png`, fullPage: true });
+
+    // Invoices: create one, pay it from the hosted page in any coin, see it paid.
+    await d.click("button:has-text('Invoices')");
+    await d.click("text=Create invoice");
+    await d.waitForSelector("text=INV-0001");
+    await d.screenshot({ path: `${out}/11-dashboard-invoices.png` });
+    const invHref = await d.getAttribute("a:has-text('Open') >> nth=0", "href");
+    const inv = await page(1100, 1100);
+    await inv.goto(`${BASE}${invHref}`);
+    await inv.waitForSelector("text=Fieldwork Café");
+    await inv.screenshot({ path: `${out}/12-invoice.png` });
+    await inv.click("text=with any crypto");
+    await inv.waitForURL(/\/c\/cs_/);
+    await inv.click("button[aria-pressed]:has-text('Solana') >> nth=0");
+    await inv.fill("input", "So11111111111111111111111111111111111111112");
+    await inv.click("text=Get payment address");
+    await inv.click("text=Simulate the payment (sandbox)");
+    await inv.waitForSelector("text=Payment complete", { timeout: 30000 });
+    await inv.goto(`${BASE}${invHref}`);
+    await inv.waitForSelector("text=On-chain receipt", { timeout: 30000 });
+    await inv.screenshot({ path: `${out}/13-invoice-paid.png` });
+
+    // Subscriptions, customers, settings.
+    await d.click("button:has-text('Subscriptions')");
+    await d.click("text=Add plan");
+    await d.waitForSelector("option:has-text('Mug of the month')", { state: "attached" });
+    await d.click("text=Create subscription");
+    await d.waitForSelector("text=First invoice, ready to send");
+    await d.waitForSelector("td:has-text('Ines Duarte')");
+    await d.screenshot({ path: `${out}/14-dashboard-subscriptions.png` });
+    await d.click("button:has-text('Customers')");
+    await d.waitForSelector("text=Fieldwork Café");
+    await d.screenshot({ path: `${out}/15-dashboard-customers.png` });
+    await d.click("button:has-text('Settings')");
+    await d.click("text=New read-only key");
+    await d.waitForSelector("text=Shown once");
+    await d.screenshot({ path: `${out}/16-dashboard-settings.png` });
   }
 
   const m = await page(390, 844);

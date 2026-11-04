@@ -33,6 +33,15 @@ export const APP_METHODS = new Set([
   "execute_batch",
   "refund_failed",
   "create_split",
+  // Escrow: parties propose, the payer releases, the payee refunds. All gasless.
+  "create_escrow",
+  "cancel_escrow",
+  "release_milestone",
+  "refund_milestone",
+  // Agent allowances: an AI agent can pay without holding any NEAR.
+  "set_allowance",
+  "agent_pay",
+  "revoke_allowance",
 ]);
 
 export const DAO_METHODS = new Set(["add_proposal", "act_proposal"]);

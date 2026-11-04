@@ -27,6 +27,7 @@ export default {
           ]).concat([
             { source: "/c/:id", destination: "/c/_" },
             { source: "/r/:id", destination: "/r/_" },
+            { source: "/i/:id", destination: "/i/_" },
           ]);
         },
       }

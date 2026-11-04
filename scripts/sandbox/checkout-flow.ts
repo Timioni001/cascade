@@ -22,6 +22,9 @@ const USDC_BASE = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.n
 
 export interface CheckoutResult {
   merchant: string;
+  /** The shop's account and API key, for the stories that follow (platform-flow.ts). */
+  shop: Person;
+  secretKey: string;
   session: CheckoutSession;
   replayedSessionId: string;
   webhook: WebhookEvent | null;
@@ -131,7 +134,7 @@ export async function checkoutFlow(w: World, n: Narrator, opts: { dao?: string }
   n.step("17. The shop's server gets a signed webhook and ships the mug");
   for (let i = 0; i < 20 && m.accepted.length === 0; i++) await new Promise((res) => setTimeout(res, 100));
   const webhook = m.accepted[0] ?? null;
-  n.ok(webhook ? `Verified ${webhook.type} for ${webhook.data.session.reference} with verifyWebhook(rawBody, header, secret)` : "no webhook arrived");
+  n.ok(webhook && "session" in webhook.data ? `Verified ${webhook.type} for ${webhook.data.session.reference} with verifyWebhook(rawBody, header, secret)` : "no webhook arrived");
   const forged = await fetch(hookUrl, { method: "POST", headers: { "cascade-signature": `t=${Math.floor(Date.now() / 1000)},v1=${"0".repeat(64)}` }, body: JSON.stringify({ ...webhook, id: "evt_forged" }) });
   n.say(`A forged webhook to the same endpoint is rejected (HTTP ${forged.status}).`);
 
@@ -142,6 +145,8 @@ export async function checkoutFlow(w: World, n: Narrator, opts: { dao?: string }
 
   return {
     merchant: shop.id,
+    shop,
+    secretKey: onboarded.secretKey,
     session: done,
     replayedSessionId: replay.id,
     webhook,

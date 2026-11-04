@@ -16,7 +16,8 @@ export function relayerApp(relayer: Relayer, opts: { trustProxy?: boolean; ipHea
     return c.json({ error: "internal error" }, 500);
   });
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  // `account` signs every relayed transaction: clients use it to look their transactions up.
+  app.get("/health", (c) => c.json({ ok: true, account: relayer.account }));
 
   app.post("/relay", async (c) => {
     const body = await c.req.json<{ signedDelegate?: string }>().catch(() => ({}) as { signedDelegate?: string });

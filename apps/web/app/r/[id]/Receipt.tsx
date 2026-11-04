@@ -64,7 +64,7 @@ export function Receipt() {
               <span style={{ color: "var(--muted)" }}>Receipt</span><span className="num">#{r.onchain?.id} on {r.contract}</span>
               {when && <><span style={{ color: "var(--muted)" }}>Settled</span><span>{when.toLocaleString()}</span></>}
               {r.delivery?.paidWith && <><span style={{ color: "var(--muted)" }}>Paid with</span><span className="num">{Number(r.delivery.paidWith.amount).toPrecision(6).replace(/\.?0+$/, "")} {r.delivery.paidWith.symbol} on {chainName(r.delivery.paidWith.chain)}</span></>}
-              <span style={{ color: "var(--muted)" }}>Delivered</span><span>${s.amountFormatted} USDC to {s.split ? "a revenue split" : "the merchant"}</span>
+              <span style={{ color: "var(--muted)" }}>Delivered</span><span>${s.amountFormatted} USDC {s.split ? "to a revenue split" : s.escrowId !== null ? `into escrow #${s.escrowId}` : s.payout ? `on ${chainName(s.payout.chain)} to ${s.payout.address.slice(0, 8)}…${s.payout.address.slice(-4)}` : "to the merchant on NEAR"}</span>
             </div>
             <Dashed />
             <div className="stack" style={{ display: "grid", gap: 14 }}>

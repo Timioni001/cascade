@@ -17,7 +17,7 @@
     "not_found_handling": "404-page",
     // Static files are served without running the Worker (free and fast),
     // except the API and the checkout/receipt shells, which need it.
-    "run_worker_first": ["/v1/*", "/relayer/*", "/api/*", "/health", "/c/*", "/r/*"]
+    "run_worker_first": ["/v1/*", "/relayer/*", "/api/*", "/health", "/c/*", "/r/*", "/i/*"]
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "cascade", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }

@@ -39,6 +39,20 @@ const refund = await cascade.refunds.create(session.id, { amount: "10.00" }); //
 - **Revenue splits:** create a split once on-chain (`create_split`, e.g. 80% shop / 15% illustrator / 5% a DAO); sessions with `splitId` are divided by the contract the moment the money arrives.
 - **Receipts:** every paid session has a public page (`/r/<session>`) that rechecks the on-chain record, its binding to the order, and the delivery.
 - **Fees:** an optional Cascade fee is added for the customer through 1Click `appFees`; the merchant always receives the exact amount.
+- **Settle where you want:** USDC on NEAR (default), Ethereum, Base, Arbitrum or Solana; 1Click delivers there directly. Changing it needs a NEP-413 signature from the merchant's account, so a leaked API key cannot redirect money. The receipt is still recorded on NEAR.
+- **Invoices:** numbered invoices with line items and due dates, a hosted page (`/i/<id>`) the customer pays with any coin, printable to PDF, one `invoice.overdue` reminder.
+- **Subscriptions:** plans billed every day, week, month or year. Crypto has no card on file, so renewal invoices go out before each period ends; customers can prepay up to 12 periods. Unpaid renewals become `past_due`, then `canceled`. **Customers** are aggregated across invoices and subscriptions.
+- **Milestone escrow (on-chain):** `create_escrow` with up to 20 milestones; the customer funds it through an ordinary checkout from any chain (1Click delivers into the contract); only the payer (or an arbiter) releases a milestone to the payee, refunds only go to the payer, and anyone can return unreleased money after the refund date.
+- **Agent budgets (on-chain):** an owner gives an AI agent an allowance with a per-payment limit, a daily limit, an expiry and optional allowed recipients. The agent pays x402 invoices with `agent_pay`, gaslessly; the contract refuses anything outside the limits, and revoking returns the rest at once.
+- **Team access:** read-only keys (`rk_…`) for an accountant or a support tool can see everything and change nothing.
+
+```ts
+const inv = await cascade.invoices.create({ customer: { name: "Fieldwork Café" }, items: [{ description: "Stoneware mug", quantity: 24, unitAmount: "18.00" }] });
+const plan = await cascade.plans.create({ name: "Mug of the month", amount: "12.00", interval: "month" });
+await cascade.subscriptions.create({ planId: plan.id, customer: { name: "Ines" }, prepaidPeriods: 3 });
+await cascade.checkout.create({ amount: "800.00", description: "Custom tableware", escrowId: 0 }); // funds escrow #0
+const readOnly = await cascade.merchant.keys.create({ role: "read", label: "Accountant" });
+```
 
 ## Try it
 
@@ -46,7 +60,7 @@ Requirements: Node 22.13+, pnpm 10, internet access for the first run (downloads
 
 ```sh
 pnpm i
-pnpm demo     # every story end to end in the terminal, 24 checks, ~50 s
+pnpm demo     # every story end to end in the terminal, 36 checks, ~75 s
 pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 pnpm worker:local   # the same, running inside the real Cloudflare Worker runtime with D1, on :8787
 ```
@@ -72,7 +86,8 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 6. **Revenue split:** the shop's next sale is split 80/15/5 between the shop, an illustrator and the studio DAO, on arrival, with no signatures: $20.00 / $3.75 / $1.25.
 7. **Refund:** $10 goes back to the first customer as ETH on Base; the shop signs twice (create, fund) and receives `refund.succeeded`.
 8. **AI agent:** an agent pays the shop's API over x402 and gets its data; replaying the same payment is refused.
-9. The accountant's CSV is printed, then 24 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
+9. **The rest of the platform:** the shop switches its payout to USDC on Base (signed), bills a café a $467 invoice paid in SOL, starts a subscription with 3 months prepaid, runs an $800 milestone escrow funded from Base (one milestone released, one refunded), and gives an AI agent a $5 budget with on-chain limits that pays over x402 without holding any NEAR.
+10. The accountant's CSV is printed, then 36 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
 
 ## Proof
 
@@ -86,10 +101,10 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 ## Tests
 
 ```sh
-pnpm test:unit       # 77 TypeScript unit tests (seconds)
-pnpm test:sandbox    # 25 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
+pnpm test:unit       # 87 TypeScript unit tests (seconds)
+pnpm test:sandbox    # 31 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
 pnpm test            # both
-pnpm test:contracts  # 26 Rust unit tests (needs Rust)
+pnpm test:contracts  # 40 Rust unit tests (needs Rust)
 pnpm test:e2e        # optional browser test: button, QR, receipt, dashboard (needs Playwright; run pnpm dev first;
                      # CASCADE_WEB=http://localhost:8787 to test the Worker from pnpm worker:local)
 ```
@@ -125,11 +140,12 @@ Each safety rule has a test at the contract level (`contracts/app/src/tests.rs`)
 
 | Piece | State |
 | --- | --- |
-| App contract: owners, invoices, link receipts, batches, chunked payouts, refunds, quote deadlines, revenue splits | Done, unit and sandbox tested |
+| App contract: owners, invoices, link receipts, batches, chunked payouts, refunds, quote deadlines, revenue splits, milestone escrow, agent allowances | Done, unit and sandbox tested |
 | Name factory with limited app key and USDC registration | Done, tested |
 | 1Click client, Cascade quoting rules, MockOneClick | Done; real API checked with free dry quotes ([research](docs/research.md)) |
 | Relayer (NEP-366) with allowlist and rate limits; settler crank (discovers split payouts) | Done, tested |
 | Checkout API: onboarding, keys, idempotent sessions, expiry, fees, splits, refunds, x402, receipts, webhook log, CSV | Done, unit and sandbox tested |
+| Billing: payout preference (signed), invoices, plans, subscriptions with renewals and prepaid periods, customers, read-only keys, escrow-funded checkout, x402 from on-chain agent allowances | Done, unit and sandbox tested; dashboard and hosted invoice page browser-tested |
 | `@cascade/sdk`: server client, webhooks, Pay button, EVM wallet payments, QR payment URIs, x402 guard and client | Done, tested; no runtime dependencies |
 | Web: landing page, hosted checkout (steps, fee shown upfront, QR, wallet pay), paper receipt with live checks, merchant dashboard (balance, revenue chart, payments, refunds, webhooks, CSV), demo shop, x402 demo API | Done, browser-tested at desktop and phone widths |
 | Testnet demo mode (`CASCADE_ONECLICK=mock`) and demo-merchant setup script | Done; refused on mainnet (tested) |

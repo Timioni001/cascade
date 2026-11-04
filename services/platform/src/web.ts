@@ -6,6 +6,7 @@
 const SHELLS: [RegExp, string][] = [
   [/^\/c\/[A-Za-z0-9_-]+\/?$/, "/c/_"],
   [/^\/r\/[A-Za-z0-9_-]+\/?$/, "/r/_"],
+  [/^\/i\/[A-Za-z0-9_-]+\/?$/, "/i/_"],
 ];
 
 /** The asset path to serve for a page URL. */

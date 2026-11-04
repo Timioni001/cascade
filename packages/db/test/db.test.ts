@@ -26,6 +26,19 @@ for (const [name, make] of [["memory", async () => new MemoryStore()], ["sqlite"
       expect(await s.listPayments({ owner: "bob.near" })).toHaveLength(0);
     });
 
+    it("keeps documents by kind and merchant, oldest first, updates in place", async () => {
+      const s: Store = await make();
+      await s.putDoc("invoice", "in_1", "m1", { n: 1 });
+      await s.putDoc("invoice", "in_2", "m2", { n: 2 });
+      await s.putDoc("invoice", "in_3", "m1", { n: 3 });
+      await s.putDoc("plan", "in_1", "m1", { other: true });
+      await s.putDoc("invoice", "in_1", "m1", { n: 10 });
+      expect(await s.getDoc("invoice", "in_1")).toEqual({ n: 10 });
+      expect(await s.listDocs("invoice", "m1")).toEqual([{ n: 10 }, { n: 3 }]);
+      expect(await s.listDocs("invoice")).toHaveLength(3);
+      expect(await s.getDoc("invoice", "nope")).toBeNull();
+    });
+
     it("claims a key once until it expires (nonces, leases)", async () => {
       const s: Store = await make();
       expect(await s.claimOnce("n1", 1000, 0)).toBe(true);

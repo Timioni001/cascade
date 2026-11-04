@@ -223,7 +223,8 @@ export class MockOneClick implements OneClick {
         status: "PENDING_DEPOSIT",
         updatedAt: response.timestamp,
         details: { intentHashes: [], nearTxHashes: [], originChainTxHashes: [], destinationChainTxHashes: [] },
-        direction: req.destinationAsset === USDC_NEAR_ASSET && tin.blockchain !== "near" ? "in" : "out",
+        // Cascade only ever sends USDC from NEAR; every other quote is someone paying in.
+        direction: req.originAsset === USDC_NEAR_ASSET ? "out" : "in",
         deadlineMs,
       });
     }
@@ -310,11 +311,17 @@ export class MockOneClick implements OneClick {
     }
     await this.set(r, "PROCESSING", { depositedAmount: amount.toString(), originChainTxHashes: [originTx] });
     const out = BigInt(q.amountOut);
-    const tx = await this.driver.deliverUsdc(r.response.quoteRequest.recipient, out, r.response.quoteRequest.customRecipientMsg);
+    const req = r.response.quoteRequest;
+    // Delivery on NEAR goes through the driver (the sandbox mints mock USDC);
+    // another destination chain only gets a simulated transaction hash.
+    const tx = req.destinationAsset === USDC_NEAR_ASSET
+      ? await this.driver.deliverUsdc(req.recipient, out, req.customRecipientMsg)
+      : `0x${fakeHash(`${this.seed}:dest:${depositAddress}`)}`;
     await this.set(r, "SUCCESS", {
       amountIn: amount.toString(), amountInFormatted: q.amountInFormatted, amountInUsd: q.amountInUsd,
       amountOut: out.toString(), amountOutFormatted: q.amountOutFormatted, amountOutUsd: q.amountOutUsd,
-      nearTxHashes: [tx], destinationChainTxHashes: [{ hash: tx, explorerUrl: `mock://near/tx/${tx}` }],
+      nearTxHashes: req.destinationAsset === USDC_NEAR_ASSET ? [tx] : [],
+      destinationChainTxHashes: [{ hash: tx, explorerUrl: `mock://${this.token(req.destinationAsset).blockchain}/tx/${tx}` }],
     });
     return this.view(r);
   }

@@ -8,13 +8,15 @@
  * they also hold when promises, callbacks and other contracts are involved.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { bucketSum, parseUsd, type CreatedBatch } from "@cascade/core";
+import { bucketSum, parseUsd, type CreatedBatch, type Escrow } from "@cascade/core";
 import { RelayError } from "@cascade/relayer";
+import { expectOk } from "@cascade/engine";
 import { appCalls, daoCalls, DaoReader, ftCalls } from "@cascade/near";
 import { payrollPolicy, registerOwnerProposal, functionCallProposal } from "@cascade/sputnik";
 import { createWorld, ids, type Person, type World } from "../../scripts/sandbox/world.js";
 import { personalFlow, teamFlow, type PersonalResult, type TeamResult } from "../../scripts/sandbox/flows.js";
 import { checkoutFlow, type CheckoutResult } from "../../scripts/sandbox/checkout-flow.js";
+import { platformFlow, type PlatformResult } from "../../scripts/sandbox/platform-flow.js";
 import { silent } from "../../scripts/sandbox/flows.js";
 import { KeyPair } from "near-api-js";
 import { ONBOARDING_RECIPIENT, onboardingMessage } from "@cascade/engine";
@@ -23,12 +25,14 @@ let w: World;
 let personal: PersonalResult;
 let team: TeamResult;
 let shop: CheckoutResult;
+let platform: PlatformResult;
 
 beforeAll(async () => {
   w = await createWorld();
   personal = await personalFlow(w);
   team = await teamFlow(w, personal.ada);
   shop = await checkoutFlow(w, silent, { dao: team.dao });
+  platform = await platformFlow(w, silent, shop);
 });
 
 afterAll(async () => {
@@ -263,5 +267,78 @@ describe("checkout (merchant API + SDK + webhooks, real chain)", () => {
 
   it("a DAO preparer can onboard the DAO as a merchant", async () => {
     expect((await onboardWith(team.dao, personal.ada.full, personal.ada.id)).status).toBe(201);
+  });
+});
+
+describe("merchant platform: payout preference, invoices, subscriptions", () => {
+  it("a Base payout needs the account's signature and settles on Base, with a receipt on NEAR", () => {
+    expect(platform.payout.refusedWithoutSignature).toBe(true);
+    expect(platform.payout).toMatchObject({ recipient: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D", nearUsdcDelta: 0n, paid: true, receiptRecorded: true, back: true });
+  });
+
+  it("an invoice and a prepaid subscription are paid through checkout", () => {
+    expect(platform.invoice).toMatchObject({ status: "paid", amount: "467000000" });
+    expect(platform.invoice.events).toEqual(expect.arrayContaining(["invoice.created", "invoice.paid", "checkout.session.completed"]));
+    expect(platform.subscription.status).toBe("active");
+  });
+});
+
+describe("escrow: the contract holds the money between milestones", () => {
+  it("funded through checkout; only the payer releases; refunds go to the payer; closes empty", () => {
+    const e = platform.escrow;
+    expect(e.funded?.status).toBe("Funded");
+    expect(e.strangerCannotRelease && e.payeeCannotRelease && e.secondSessionRefused).toBe(true);
+    expect([e.studioDelta, e.clientDelta, e.heldAfter]).toEqual([300_000_000n, 500_000_000n, 0n]);
+    expect(e.final?.milestones.map((m) => m.status)).toEqual(["Released", "Refunded"]);
+  });
+
+  it("wrong amounts and unknown escrows are returned in full; a funded escrow cannot be cancelled", async () => {
+    const payee = await funded("escrow-payee", "0");
+    const payer = await funded("escrow-payer", "10");
+    const e = expectOk(
+      await payee.gasless<Escrow>(appCalls(ids.app).createEscrow({
+        payee: payee.id, payer: payer.id, milestones: [{ title: "Work", amount: "2000000" }], refundAfterMs: Date.now() + 86_400_000, metadataHash: "b".repeat(64),
+      })),
+      "create",
+    ).value!;
+    const before = await w.usdcBalance(payer.id);
+    for (const [amount, id] of [[parseUsd("1"), e.id], [parseUsd("2"), 999]] as const) {
+      const r = await payer.gaslessFull(ftCalls(ids.usdc).fundEscrow(ids.app, amount, id));
+      expect(r.value).toBe("0");
+    }
+    expect(await w.usdcBalance(payer.id)).toBe(before);
+    expect((await payer.gaslessFull(ftCalls(ids.usdc).fundEscrow(ids.app, parseUsd("2"), e.id))).value).toBe("2000000");
+    expect((await payee.gasless(appCalls(ids.app).cancelEscrow(e.id))).ok).toBe(false);
+    expect((await payer.gasless(appCalls(ids.app).refundMilestone(e.id, 0))).ok).toBe(false); // the payer cannot claw back before the date
+    expect((await payer.gasless(appCalls(ids.app).releaseMilestone(e.id, 0))).ok).toBe(true);
+    expect((await payer.gasless(appCalls(ids.app).releaseMilestone(e.id, 0))).ok).toBe(false); // not twice
+    expect(await w.usdcBalance(payee.id)).toBe(parseUsd("2"));
+  });
+});
+
+describe("agent allowances: spending limits enforced by the contract", () => {
+  it("x402 from an allowance: paid gaslessly, limits enforced, revoke returns the rest", () => {
+    const a = platform.agent;
+    expect(a.status).toBe(200);
+    expect(a.settlement?.success && a.receiptRecorded).toBe(true);
+    expect(a.overLimitRefused && a.strangerRefused).toBe(true);
+    expect([a.ownerRefund, a.agentNearSpent]).toEqual([4_900_000n, 0n]);
+    expect(a.allowance).toMatchObject({ revoked: true, balance: "0", total_spent: "100000", payments: 1 });
+  });
+
+  it("the daily limit holds across payments, and only the owner can top up its own allowance", async () => {
+    const owner = await funded("budget-owner", "3");
+    const agent = await w.plainAccount("budget-agent", 10n ** 23n);
+    expectOk(await owner.gasless(appCalls(ids.app).setAllowance(agent.id, { per_payment_max: "1000000", daily_max: "1500000", expires_at_ms: Date.now() + 86_400_000, payees: [] })), "set");
+    expectOk(await owner.gaslessFull(ftCalls(ids.usdc).fundAllowance(ids.app, parseUsd("3"), agent.id)), "fund");
+    expect((await agent.gasless(appCalls(ids.app).agentPay(owner.id, ids.relayer, 1_000_000n, "a"))).ok).toBe(true);
+    expect((await agent.gasless(appCalls(ids.app).agentPay(owner.id, ids.relayer, 1_000_000n, "b"))).ok).toBe(false); // 2.00 > 1.50 today
+    expect((await agent.gasless(appCalls(ids.app).agentPay(owner.id, ids.relayer, 500_000n, "c"))).ok).toBe(true);
+    const al = (await w.engine.reader.allowance(owner.id, agent.id))!;
+    expect([al.balance, al.spent_today, al.payments]).toEqual(["1500000", "1500000", 2]);
+    // Someone else's ft_transfer_call to this agent tops up *their own* (nonexistent) allowance: refused, money returned.
+    const stranger = await funded("budget-stranger", "1");
+    expect((await stranger.gaslessFull(ftCalls(ids.usdc).fundAllowance(ids.app, parseUsd("1"), agent.id))).value).toBe("0");
+    expect(await w.usdcBalance(stranger.id)).toBe(parseUsd("1"));
   });
 });

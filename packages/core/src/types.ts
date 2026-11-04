@@ -90,6 +90,65 @@ export interface AppConfig {
   next_invoice_id: number;
   next_batch_id: number;
   next_split_id: number;
+  next_escrow_id: number;
+}
+
+// ------------------------------------------------------------ escrow (mirrors contracts/app/src/vault.rs)
+
+export interface MilestoneInput {
+  title: string;
+  amount: string; // USDC base units
+}
+
+export type MilestoneStatus = "Pending" | "Releasing" | "Released" | "Refunding" | "Refunded";
+
+export interface Milestone {
+  title: string;
+  amount: string;
+  status: MilestoneStatus;
+}
+
+export interface Escrow {
+  id: number;
+  payee: string;
+  payer: string;
+  arbiter: string | null;
+  milestones: Milestone[];
+  total: string;
+  status: "AwaitingFunds" | "Funded" | "Closed" | "Cancelled";
+  refund_after_ms: number;
+  metadata_hash: string;
+  created_by: string;
+  created_at_ms: number;
+  funded_by: string | null;
+}
+
+/** What the contract still holds for an escrow. */
+export function escrowHeld(e: Escrow): bigint {
+  if (e.status === "AwaitingFunds" || e.status === "Cancelled") return 0n;
+  return e.milestones.filter((m) => m.status !== "Released" && m.status !== "Refunded").reduce((t, m) => t + BigInt(m.amount), 0n);
+}
+
+// ------------------------------------------------------------ agent allowances
+
+export interface AllowancePolicy {
+  per_payment_max: string;
+  daily_max: string;
+  expires_at_ms: number;
+  /** Empty: any recipient. */
+  payees: string[];
+}
+
+export interface Allowance {
+  owner: string;
+  agent: string;
+  balance: string;
+  policy: AllowancePolicy;
+  day: number;
+  spent_today: string;
+  total_spent: string;
+  payments: number;
+  revoked: boolean;
 }
 
 /** A standing revenue split (shares in basis points, adding up to 10000). */

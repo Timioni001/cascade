@@ -13,7 +13,7 @@
 import { Hono } from "hono";
 import type { Limiter } from "@cascade/core";
 import { StoreLimiter, type Store } from "@cascade/db";
-import { AgentPayments, Checkout, Refunds, checkoutHooks, mintingDriver } from "@cascade/engine";
+import { AgentPayments, Billing, Checkout, Refunds, checkoutHooks, mintingDriver } from "@cascade/engine";
 import { Chain } from "@cascade/near";
 import { HttpOneClick, MockOneClick, type MockRecords, type OneClick } from "@cascade/oneclick";
 import { apiApp } from "@cascade/api";
@@ -73,16 +73,18 @@ export function createPlatform(d: PlatformDeps): Platform {
   const oneclick: OneClick = mock ?? new HttpOneClick(cfg.oneclickJwt ? { jwt: cfg.oneclickJwt } : {});
   const checkout = new Checkout({
     store, oneclick, chain, app: cfg.app, publicUrl: cfg.publicUrl, keyMode: cfg.network === "mainnet" ? "live" : "test",
+    usdc: cfg.usdc, relayer: cfg.relayer.id,
     ...(cfg.fee ? { fee: cfg.fee } : {}),
   });
   const refunds = new Refunds(checkout);
+  const billing = new Billing(checkout);
   const limiter = d.limiter ?? new StoreLimiter(store);
   const relayer = new Relayer({
     chain, payer: chain.account(cfg.relayer.id, cfg.relayer.key), app: cfg.app, usdc: cfg.usdc, factory: cfg.factory, daoFactory: cfg.daoFactory, limiter,
   });
   const settler = new Settler({
     oneclick, store, chain: nearSettlerChain(chain, chain.account(cfg.settler.id, cfg.settler.key), cfg.app),
-    hooks: checkoutHooks(checkout, f, refunds),
+    hooks: checkoutHooks(checkout, f, refunds, billing),
     ...(d.onSettlerEvent ? { onEvent: d.onSettlerEvent } : {}),
   });
 
@@ -91,6 +93,6 @@ export function createPlatform(d: PlatformDeps): Platform {
   app.get("/health", (c) => c.json({ ok: true, network: cfg.network, app: cfg.app, oneclick: mock ? "simulated" : "live" }));
   app.route("/relayer", relayerApp(relayer, { trustProxy: cfg.trustProxy, allowOrigins: cfg.allowOrigins, ...ipHeader }));
   app.route("/api/shop", shopApp({ credentials: cfg.shop, orders: d.shopOrders ?? new MemoryShopOrders(), apiUrl: cfg.publicUrl, fetch: f }));
-  app.route("/", apiApp({ checkout, refunds, agents: new AgentPayments(checkout), trustProxy: cfg.trustProxy, limiter, ...ipHeader, ...(mock ? { dev: { oneclick: mock } } : {}) }));
+  app.route("/", apiApp({ checkout, refunds, billing, agents: new AgentPayments(checkout), trustProxy: cfg.trustProxy, limiter, ...ipHeader, ...(mock ? { dev: { oneclick: mock } } : {}) }));
   return { app, settler, checkout, mock };
 }

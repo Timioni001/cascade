@@ -69,6 +69,30 @@ New users get a full-access key generated in their browser, plus a function-call
 - Each 402 creates a session bound to `"METHOD url"`; a payment for one resource cannot unlock another (`resource_mismatch`), and a paid session unlocks exactly one response (`already_used` on replay; an in-process lock prevents two concurrent requests both succeeding).
 - The agent's `txHash` is only a hint to 1Click; success is decided by 1Click delivering to the merchant and the settler recording it, never by the client's claim.
 - 402 responses reserve real deposit addresses (up to 3 per request). A client spamming unpaid requests costs quote calls, bounded by the API's rate limits.
+- One success per session is an atomic claim in the store (`claimOnce`), so it also holds across Worker isolates.
+- **Paying from an allowance (NEAR):** success needs an `agent_payment` event emitted by the Cascade app contract itself, read from the receipts that contract executed in that transaction (logs are attributed to the executing account, so another contract in the same transaction cannot forge one), to this merchant, for at least the price, with the session's memo. The event is emitted only in the callback after the transfer succeeded. Each transaction hash is used once.
+
+## Escrow
+
+- The contract holds escrowed USDC between funding and each milestone's release or refund. Destinations are fixed at creation: releases only go to the payee, refunds only to the payer.
+- Only the payer, or the arbiter named at creation, can release. The payee or the arbiter can refund at any time; anyone can return unreleased milestones after `refund_after_ms` (1 hour to 1 year), so the payer is never stuck with money locked forever. A payee who needs protection against a payer who never releases should name an arbiter.
+- Funding must be exactly the total, once (anything else is returned in full). A checkout session can fund an escrow only if its payee is the merchant; only one open session per escrow, and the escrow is re-checked on-chain before a deposit address is issued, because a second delivery would be bounced back into 1Click.
+- A failed transfer puts the milestone back to Pending; the money stays in the contract.
+
+## Agent allowances
+
+- An agent can only call `agent_pay` for its own (owner, agent) allowance, and the contract checks every rule before money moves: not revoked, not expired, per-payment limit, rolling UTC-day limit, balance, allowed recipients. A failed transfer gives back the balance and the day's room.
+- Only the owner tops up its own allowance (`ft_transfer_call` from the owner; anyone else's is returned). The owner can change limits or revoke at once; revoking returns the balance to the owner.
+- A compromised agent key can spend at most the daily limit per day, only to allowed recipients if a list is set, until revoked.
+
+## Payout destination
+
+- Changing where checkout money settles (USDC on another chain, or another address) needs a fresh NEP-413 signature from the merchant's NEAR account (or a DAO preparer), with a single-use nonce, not just the secret key. Open sessions keep the destination they were created with; the destination is bound into the on-chain receipt hash.
+- With a non-NEAR payout, Cascade cannot check the delivery on-chain itself; it relies on 1Click's status (as for any cross-chain delivery) and still records a receipt on NEAR.
+
+## API keys
+
+- Only key hashes are stored. Read-only keys (`rk_…`) can only make GET requests; they cannot create, refund, issue keys or change settings. A key cannot revoke itself.
 
 ## Fees
 
@@ -76,7 +100,7 @@ The optional Cascade fee is a 1Click `appFees` entry paid by the customer on top
 
 ## Merchant dashboard
 
-The dashboard keeps the secret key in the browser tab's session storage and calls the API through this site's server, which forwards only an allowlist of merchant paths. A script injected into the dashboard page could read the key while it is open: the dashboard loads no third-party scripts, and merchants can rotate keys (to build: rotation UI).
+The dashboard keeps the key in the browser tab's session storage and calls the API on the same origin. A script injected into the dashboard page could read the key while it is open: the dashboard loads no third-party scripts. Use a read-only key for anyone who only needs to look; keys can be revoked from Settings.
 
 ## Cross-chain lines
 
@@ -90,6 +114,6 @@ A private line asks 1Click for `confidentiality: "basic"` (needs our partner JWT
 
 ## Known gaps (to fix before mainnet use)
 
-- Contract storage for invoices and batches is paid by the contract; bounded by the relayer limits and `MAX_LINES`, not by a per-owner deposit.
+- Contract storage for invoices, batches, escrows and allowances is paid by the contract; bounded by the relayer limits, `MAX_LINES` and `MAX_MILESTONES`, not by a per-owner deposit.
 - The app contract is deployed locked (no access keys; `deployments/<network>.json` records `appLocked: true`). Nobody can upgrade or pause it; a new version means a new app account. The factory lives on the root account, which keeps a key: it holds only NEAR for creating names, never user funds.
-- The in-memory rate limiter is per process.
+- Rate limits and replay guards are in the database (D1 or SQLite), shared by every instance.

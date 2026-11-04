@@ -400,3 +400,163 @@ fn only_owner_or_preparer_creates_valid_splits() {
     }));
     assert!(r.is_err(), "shares must add up to 100%");
 }
+
+// ------------------------------------------------------------ escrow
+
+const NOW_MS: u64 = 1_700_000_000_000;
+
+fn transfer(c: &mut Cascade, from: &str, amount: u128, msg: String) -> u128 {
+    as_caller(USDC);
+    match c.ft_on_transfer(acc(from), U128(amount), msg) {
+        PromiseOrValue::Value(v) => v.0,
+        _ => panic!("expected a value"),
+    }
+}
+
+fn panics(f: impl FnOnce()) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err()
+}
+
+fn milestone(title: &str, amount: u128) -> MilestoneInput {
+    MilestoneInput { title: title.into(), amount: U128(amount) }
+}
+
+fn escrow(c: &mut Cascade) -> Escrow {
+    as_caller("ada.near");
+    c.create_escrow(
+        acc("ada.near"),
+        acc("client.near"),
+        None,
+        vec![milestone("Design", 400_000), milestone("Build", 600_000)],
+        NOW_MS + 30 * 86_400_000,
+        "a".repeat(64),
+    )
+}
+
+#[test]
+fn escrow_is_created_by_a_party_and_funded_for_exactly_its_total() {
+    let mut c = setup();
+    as_caller("mallory.near");
+    assert!(panics(|| {
+        c.create_escrow(acc("ada.near"), acc("client.near"), None, vec![milestone("x", 10_000)], NOW_MS + 7_200_000, "a".repeat(64));
+    }));
+    as_caller("ada.near");
+    assert!(panics(|| {
+        c.create_escrow(acc("ada.near"), acc("client.near"), None, vec![milestone("x", 10_000)], NOW_MS + 60_000, "a".repeat(64));
+    }));
+    let e = escrow(&mut c);
+    assert_eq!((e.total.0, e.status), (1_000_000, EscrowStatus::AwaitingFunds));
+    assert_eq!(transfer(&mut c, "client.near", 999_999, r#"{"escrow":0}"#.into()), 999_999);
+    assert_eq!(transfer(&mut c, "client.near", 1_000_000, r#"{"escrow":7}"#.into()), 1_000_000);
+    // Anyone may fund (1Click delivering a checkout payment), but only once.
+    assert_eq!(transfer(&mut c, "intents.near", 1_000_000, r#"{"escrow":0}"#.into()), 0);
+    assert_eq!(transfer(&mut c, "client.near", 1_000_000, r#"{"escrow":0}"#.into()), 1_000_000);
+    let e = c.get_escrow(0).unwrap();
+    assert_eq!((e.status, e.funded_by), (EscrowStatus::Funded, Some(acc("intents.near"))));
+    as_caller("ada.near");
+    assert!(panics(|| c.cancel_escrow(0)));
+}
+
+#[test]
+fn only_the_payer_releases_a_milestone_and_only_once() {
+    let mut c = setup();
+    escrow(&mut c);
+    transfer(&mut c, "client.near", 1_000_000, r#"{"escrow":0}"#.into());
+    for who in ["ada.near", "mallory.near"] {
+        as_caller(who);
+        assert!(panics(|| c.release_milestone(0, 0)), "{who} must not release");
+    }
+    as_caller("client.near");
+    c.release_milestone(0, 0);
+    assert_eq!(c.get_escrow(0).unwrap().milestones[0].status, MilestoneStatus::Releasing);
+    assert!(panics(|| c.release_milestone(0, 0)));
+    with_result(APP, true);
+    assert!(c.on_milestone_sent(0, 0, Ok(())));
+    let e = c.get_escrow(0).unwrap();
+    assert_eq!((e.milestones[0].status, e.held()), (MilestoneStatus::Released, 600_000));
+}
+
+#[test]
+fn a_failed_release_keeps_the_money_in_escrow() {
+    let mut c = setup();
+    escrow(&mut c);
+    transfer(&mut c, "client.near", 1_000_000, r#"{"escrow":0}"#.into());
+    as_caller("client.near");
+    c.release_milestone(0, 1);
+    with_result(APP, false);
+    assert!(!c.on_milestone_sent(0, 1, Err(PromiseError::Failed)));
+    let e = c.get_escrow(0).unwrap();
+    assert_eq!((e.milestones[1].status, e.held()), (MilestoneStatus::Pending, 1_000_000));
+}
+
+#[test]
+fn refunds_go_to_the_payer_payee_may_refund_anyone_after_the_date() {
+    let mut c = setup();
+    escrow(&mut c);
+    transfer(&mut c, "client.near", 1_000_000, r#"{"escrow":0}"#.into());
+    as_caller("client.near");
+    assert!(panics(|| c.refund_milestone(0, 0)), "the payer cannot take money back before the date");
+    as_caller("ada.near");
+    c.refund_milestone(0, 0);
+    with_result(APP, true);
+    c.on_milestone_sent(0, 0, Ok(()));
+    let mut late = ctx("anyone.near");
+    late.block_timestamp((NOW_MS + 31 * 86_400_000) * 1_000_000);
+    testing_env!(late.build());
+    c.refund_milestone(0, 1);
+    with_result(APP, true);
+    c.on_milestone_sent(0, 1, Ok(()));
+    let e = c.get_escrow(0).unwrap();
+    assert_eq!(e.status, EscrowStatus::Closed);
+    assert!(e.milestones.iter().all(|m| m.status == MilestoneStatus::Refunded));
+}
+
+// ------------------------------------------------------------ agent allowances
+
+fn policy(per: u128, daily: u128) -> AllowancePolicy {
+    AllowancePolicy { per_payment_max: U128(per), daily_max: U128(daily), expires_at_ms: NOW_MS + 86_400_000 * 30, payees: vec![] }
+}
+
+#[test]
+fn an_agent_spends_only_within_its_owners_limits() {
+    let mut c = setup();
+    as_caller("ada.near");
+    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000));
+    assert_eq!(transfer(&mut c, "ada.near", 1_000_000, r#"{"allowance":"bot.ada.near"}"#.into()), 0);
+    assert_eq!(transfer(&mut c, "eve.near", 5, r#"{"allowance":"bot.ada.near"}"#.into()), 5, "only the owner's own allowance can be topped up");
+
+    as_caller("mallory.near");
+    assert!(panics(|| c.agent_pay(acc("ada.near"), acc("mallory.near"), U128(1), "x".into())), "not the agent");
+    as_caller("bot.ada.near");
+    assert!(panics(|| c.agent_pay(acc("ada.near"), acc("shop.near"), U128(100_001), "x".into())));
+    c.agent_pay(acc("ada.near"), acc("shop.near"), U128(100_000), "x402:cs_1".into());
+    c.agent_pay(acc("ada.near"), acc("shop.near"), U128(100_000), "x402:cs_2".into());
+    assert!(panics(|| c.agent_pay(acc("ada.near"), acc("shop.near"), U128(60_000), "x".into())), "daily limit");
+    let a = c.get_allowance(acc("ada.near"), acc("bot.ada.near")).unwrap();
+    assert_eq!((a.balance.0, a.spent_today.0, a.payments), (800_000, 200_000, 2));
+
+    // A failed transfer gives back balance and daily room.
+    with_result(APP, false);
+    c.on_agent_paid(acc("ada.near"), acc("bot.ada.near"), acc("shop.near"), U128(100_000), "x402:cs_2".into(), NOW_MS / 86_400_000, Err(PromiseError::Failed));
+    let a = c.get_allowance(acc("ada.near"), acc("bot.ada.near")).unwrap();
+    assert_eq!((a.balance.0, a.spent_today.0), (900_000, 100_000));
+}
+
+#[test]
+fn revoking_stops_the_agent_and_returns_the_balance() {
+    let mut c = setup();
+    as_caller("ada.near");
+    c.set_allowance(acc("bot.ada.near"), policy(100_000, 250_000));
+    transfer(&mut c, "ada.near", 500_000, r#"{"allowance":"bot.ada.near"}"#.into());
+    as_caller("ada.near");
+    c.revoke_allowance(acc("bot.ada.near"));
+    let a = c.get_allowance(acc("ada.near"), acc("bot.ada.near")).unwrap();
+    assert_eq!((a.revoked, a.balance.0), (true, 0));
+    as_caller("bot.ada.near");
+    assert!(panics(|| c.agent_pay(acc("ada.near"), acc("shop.near"), U128(1), "x".into())));
+    assert_eq!(transfer(&mut c, "ada.near", 5, r#"{"allowance":"bot.ada.near"}"#.into()), 5, "a revoked allowance takes no new money");
+    as_caller("ada.near");
+    assert!(panics(|| {
+        c.set_allowance(acc("ada.near"), policy(1, 1));
+    }), "an owner cannot be its own agent");
+}

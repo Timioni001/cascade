@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { RateLimiter, HOUR, type Limiter } from "@cascade/core";
-import { AgentPayments, CheckoutError, Refunds, type Checkout, type OnboardingProof } from "@cascade/engine";
+import { AgentPayments, Billing, CheckoutError, Refunds, type Checkout, type OnboardingProof } from "@cascade/engine";
 import { ledgerRows, toCsv } from "@cascade/db";
 import type { X402PaymentPayload } from "@cascade/sdk";
 import type { MockOneClick } from "@cascade/oneclick";
@@ -10,6 +10,8 @@ export interface ApiOptions {
   checkout: Checkout;
   refunds?: Refunds;
   agents?: AgentPayments;
+  /** Invoices, plans, subscriptions, customers. Pass the same instance the settler ticks. */
+  billing?: Billing;
   trustProxy?: boolean;
   /** Sandbox only: enables POST /v1/dev/... routes that fake a payer's deposit. */
   dev?: { oneclick: MockOneClick };
@@ -30,6 +32,7 @@ export function apiApp(o: ApiOptions) {
   const c = o.checkout;
   const refunds = o.refunds ?? new Refunds(c);
   const agents = o.agents ?? new AgentPayments(c);
+  const billing = o.billing ?? new Billing(c);
   const limiter = o.limiter ?? new RateLimiter();
   const ip = (ctx: Context) => (o.ipHeader ? ctx.req.header(o.ipHeader) : undefined) ?? (o.trustProxy ? ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined) ?? ctx.req.header("x-real-ip") ?? "local";
   const body = async (ctx: Context): Promise<Json> => {
@@ -76,7 +79,11 @@ export function apiApp(o: ApiOptions) {
   const merchant = new Hono();
   // Scoped to merchant paths only: a "*" here would also catch /v1/public.
   const auth = async (ctx: Context, next: () => Promise<void>) => {
-    ctx.set("merchant" as never, (await c.authenticate(ctx.req.header("authorization"))) as never);
+    const k = await c.authenticateKey(ctx.req.header("authorization"));
+    // Read-only keys (rk_...) can look but not act.
+    if (k.role === "read" && ctx.req.method !== "GET") throw new CheckoutError(403, "this is a read-only key");
+    ctx.set("merchant" as never, k.merchant as never);
+    ctx.set("keyHash" as never, k.hash as never);
     await next();
   };
   merchant.use("/merchant", auth);
@@ -87,6 +94,7 @@ export function apiApp(o: ApiOptions) {
   merchant.use("/webhooks", auth);
   merchant.use("/webhooks/*", auth);
   merchant.use("/reports/*", auth);
+  for (const p of ["/invoices", "/invoices/*", "/plans", "/plans/*", "/subscriptions", "/subscriptions/*", "/customers"]) merchant.use(p, auth);
   const me = (ctx: Context) => ctx.get("merchant" as never) as unknown as Awaited<ReturnType<Checkout["authenticate"]>>;
 
   /** The merchant's USDC balance on NEAR, read from the token contract. */
@@ -97,7 +105,28 @@ export function apiApp(o: ApiOptions) {
   });
   merchant.get("/merchant", (ctx) => {
     const m = me(ctx);
-    return ctx.json({ id: m.id, name: m.name, account: m.account, webhookUrl: m.webhookUrl });
+    return ctx.json({ id: m.id, name: m.name, account: m.account, webhookUrl: m.webhookUrl, payout: m.payout ?? null });
+  });
+  merchant.get("/merchant/keys", async (ctx) => ctx.json({ object: "list", data: await c.listKeys(me(ctx)) }));
+  merchant.post("/merchant/keys", async (ctx) => {
+    const b = await body(ctx);
+    const role = (str(b.role, "role", false) ?? "read") as "full" | "read";
+    const key = await c.issueKey(me(ctx).id, role, str(b.label, "label", false) ?? null);
+    return ctx.json({ key, role, prefix: key.slice(0, 14) }, 201);
+  });
+  merchant.post("/merchant/keys/:prefix/revoke", async (ctx) => {
+    await c.revokeKey(me(ctx), ctx.req.param("prefix"), ctx.get("keyHash" as never) as unknown as string);
+    return ctx.json({ revoked: true });
+  });
+  merchant.post("/merchant/payout", async (ctx) => {
+    const b = await body(ctx);
+    const proof = b.proof as OnboardingProof | undefined;
+    if (!proof || typeof proof !== "object") throw new CheckoutError(400, "proof is required: a NEP-413 signature of the payout message");
+    const raw = b.payout as { chain?: unknown; address?: unknown } | null | undefined;
+    if (raw === undefined) throw new CheckoutError(400, "payout is required (null for USDC on NEAR)");
+    const payout = raw === null ? null : { chain: str(raw.chain, "payout.chain")!, address: str(raw.address, "payout.address")! };
+    const m = await c.setPayout(me(ctx), payout, proof);
+    return ctx.json({ payout: m.payout ?? null });
   });
   merchant.post("/merchant", async (ctx) => {
     const b = await body(ctx);
@@ -122,6 +151,7 @@ export function apiApp(o: ApiOptions) {
         ...(b.cancelUrl !== undefined ? { cancelUrl: str(b.cancelUrl, "cancelUrl")! } : {}),
         ...(typeof b.expiresInMinutes === "number" ? { expiresInMinutes: b.expiresInMinutes } : {}),
         ...(b.splitId !== undefined ? { splitId: Number(b.splitId) } : {}),
+        ...(b.escrowId !== undefined ? { escrowId: Number(b.escrowId) } : {}),
       },
       ctx.req.header("idempotency-key") ?? undefined,
     );
@@ -186,6 +216,43 @@ export function apiApp(o: ApiOptions) {
     return new Response(toCsv(rows), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="cascade-${month ?? "all"}.csv"` } });
   });
 
+  // ------------------------------------------------------------ billing
+  const list = <T>(data: T[]) => ({ object: "list", data });
+  const int = (v: unknown, name: string) => {
+    if (v === undefined) return undefined;
+    if (typeof v !== "number" || !Number.isInteger(v)) throw new CheckoutError(400, `${name} must be an integer`);
+    return v;
+  };
+  merchant.post("/invoices", async (ctx) => {
+    const b = await body(ctx);
+    const daysUntilDue = int(b.daysUntilDue, "daysUntilDue");
+    const inv = await billing.createInvoice(me(ctx), {
+      customer: b.customer, items: b.items,
+      ...(b.dueDate !== undefined ? { dueDate: str(b.dueDate, "dueDate")! } : {}),
+      ...(daysUntilDue !== undefined ? { daysUntilDue } : {}),
+      ...(b.memo !== undefined ? { memo: str(b.memo, "memo")! } : {}),
+    });
+    return ctx.json(await billing.invoiceView(inv), 201);
+  });
+  merchant.get("/invoices", async (ctx) => ctx.json(list(await Promise.all((await billing.listInvoices(me(ctx))).map((i) => billing.invoiceView(i))))));
+  merchant.get("/invoices/:id", async (ctx) => ctx.json(await billing.invoiceView(await billing.getInvoice(me(ctx), ctx.req.param("id")))));
+  merchant.post("/invoices/:id/void", async (ctx) => ctx.json(await billing.invoiceView(await billing.voidInvoice(me(ctx), ctx.req.param("id")))));
+  merchant.post("/plans", async (ctx) => ctx.json(billing.planView(await billing.createPlan(me(ctx), await body(ctx))), 201));
+  merchant.get("/plans", async (ctx) => ctx.json(list((await billing.listPlans(me(ctx))).map((p) => billing.planView(p)))));
+  merchant.post("/subscriptions", async (ctx) => {
+    const b = await body(ctx);
+    const s = await billing.createSubscription(me(ctx), { planId: b.planId, customer: b.customer, prepaidPeriods: b.prepaidPeriods });
+    const inv = await billing.getInvoice(me(ctx), s.latestInvoiceId!);
+    return ctx.json({ ...(await billing.subscriptionView(s)), latestInvoice: await billing.invoiceView(inv) }, 201);
+  });
+  merchant.get("/subscriptions", async (ctx) => ctx.json(list(await Promise.all((await billing.listSubscriptions(me(ctx))).map((s) => billing.subscriptionView(s))))));
+  merchant.get("/subscriptions/:id", async (ctx) => ctx.json(await billing.subscriptionView(await billing.getSubscription(me(ctx), ctx.req.param("id")))));
+  merchant.post("/subscriptions/:id/cancel", async (ctx) => {
+    const b = (await ctx.req.json().catch(() => ({}))) as { atPeriodEnd?: unknown };
+    return ctx.json(await billing.subscriptionView(await billing.cancelSubscription(me(ctx), ctx.req.param("id"), b.atPeriodEnd === true)));
+  });
+  merchant.get("/customers", async (ctx) => ctx.json(list(await billing.customers(me(ctx)))));
+
   app.route("/v1", merchant);
 
   // ------------------------------------------------------------ public (checkout page)
@@ -206,6 +273,8 @@ export function apiApp(o: ApiOptions) {
     return ctx.json(await c.startPayment(ctx.req.param("id"), { assetId: str(b.assetId, "assetId")!, refundTo: str(b.refundTo, "refundTo")! }));
   });
   pub.get("/sessions/:id/receipt", async (ctx) => ctx.json(await c.receipt(ctx.req.param("id"))));
+  pub.get("/invoices/:id", async (ctx) => ctx.json(await billing.publicInvoice(ctx.req.param("id"))));
+  pub.post("/invoices/:id/pay", async (ctx) => ctx.json(await billing.payInvoice(ctx.req.param("id"))));
   pub.post("/sessions/:id/deposit", async (ctx) => {
     const b = await body(ctx);
     return ctx.json(await c.submitDeposit(ctx.req.param("id"), str(b.txHash, "txHash")!));

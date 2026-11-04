@@ -14,6 +14,16 @@ Money only moves between three places on NEAR: the **owner** (a person's account
                                                          ──refund──────▶ owner (failed lines)
 ```
 
+The contract also holds money in three other cases, each with its destinations fixed up front:
+
+| Held for | Arrives | Leaves |
+| --- | --- | --- |
+| Revenue split | 1Click delivery with `{"split": id}` | At once, to the split's shares |
+| Milestone escrow | `{"escrow": id}`, exact total (from a checkout on any chain, or the payer) | Per milestone: to the payee when the payer (or arbiter) releases; to the payer on refund |
+| Agent allowance | `{"allowance": agent}` from the owner | `agent_pay` within the owner's limits, to the allowed recipients; the rest back to the owner on revoke |
+
+Checkout money that needs no contract goes straight from 1Click to the merchant: USDC on NEAR by default, or USDC on Ethereum, Base, Arbitrum or Solana if the merchant signed for it. Invoices and subscriptions are off-chain documents paid through ordinary checkout sessions, so each payment still gets an on-chain receipt.
+
 ## Owners
 
 Every invoice and batch belongs to an owner: `Account(id)` or `Dao(id)`. Each feature works for both:

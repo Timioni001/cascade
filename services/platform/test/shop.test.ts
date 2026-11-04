@@ -46,6 +46,7 @@ describe("static site routing", () => {
     expect(webAssetPath("/c/cs_AbC123")).toBe("/c/_");
     expect(webAssetPath("/r/cs_AbC123/")).toBe("/r/_");
     expect(webAssetPath("/c/cs_1/../../etc")).toBe("/c/cs_1/../../etc"); // not a shell; the host resolves it safely
+    expect(webAssetPath("/i/in_Abc")).toBe("/i/_");
     expect(webAssetPath("/shop")).toBe("/shop");
   });
   it("only the checkout may be framed", () => {

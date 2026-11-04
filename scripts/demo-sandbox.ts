@@ -11,6 +11,7 @@ import { bucketSum, formatUsd } from "@cascade/core";
 import { createWorld } from "./sandbox/world.js";
 import { personalFlow, teamFlow, type Narrator } from "./sandbox/flows.js";
 import { checkoutFlow } from "./sandbox/checkout-flow.js";
+import { platformFlow } from "./sandbox/platform-flow.js";
 
 const tty = process.stdout.isTTY;
 const c = (code: string) => (s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -51,8 +52,9 @@ try {
   const p = await personalFlow(world, narrator);
   const t = await teamFlow(world, p.ada, narrator);
   const k = await checkoutFlow(world, narrator, { dao: t.dao });
+  const x = await platformFlow(world, narrator, k);
 
-  console.log(`\n${bold("21. The accountant's CSV (Ada, then the studio)")}`);
+  console.log(`\n${bold("26. The accountant's CSV (Ada, then the studio)")}`);
   for (const csv of [p.csv, t.csv]) {
     for (const row of csv.trim().split("\r\n")) console.log(`  ${dim(row.length > 160 ? row.slice(0, 157) + "..." : row)}`);
     console.log("");
@@ -83,6 +85,19 @@ try {
   check(k.refund.status === "succeeded" && k.refund.amount === "10000000" && k.refund.webhookType === "refund.succeeded", "a $10 refund reached the customer in ETH on Base, and the shop got refund.succeeded");
   check(k.agent.status === 200 && k.agent.settlement?.success === true, "an AI agent paid over x402 and got its data");
   check(k.agent.replayStatus === 402 && k.agent.replayReason === "already_used", "replaying the agent's payment does not unlock a second response");
+  const USDC_BASE = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+  check(x.payout.refusedWithoutSignature, "the API key alone cannot change where money goes; a NEP-413 signature from the account can");
+  check(x.payout.destinationAsset === USDC_BASE && x.payout.recipient === "0x2527D02599Ba641c19FEa793cD0F167589a0f10D" && x.payout.nearUsdcDelta === 0n, "with a Base payout, 1Click was asked to deliver USDC on Base to the shop's address (nothing on NEAR)");
+  check(x.payout.paid && x.payout.receiptRecorded && x.payout.back, "that sale still has an on-chain receipt on NEAR; the shop switched back");
+  check(x.invoice.status === "paid" && x.invoice.amount === "467000000" && x.invoice.receiptId !== null, `invoice ${x.invoice.number} ($467.00, 2 line items) paid in SOL, with an on-chain receipt`);
+  check(x.invoice.events.includes("invoice.created") && x.invoice.events.includes("invoice.paid"), "the shop got invoice.created and invoice.paid webhooks");
+  check(x.subscription.status === "active" && x.subscription.prepaidInvoiceAmount === "36000000" && !!x.subscription.periodEnd && Date.parse(x.subscription.periodEnd) - Date.parse(x.subscription.periodStart!) > 85 * 86_400_000, "a subscription with 3 months prepaid ($36.00) is active for 3 months");
+  check(x.escrow.funded?.status === "Funded" && x.escrow.funded.total === "800000000" && x.escrow.secondSessionRefused, "the escrow was funded from Base through checkout ($800.00, held by the contract); a second funding session was refused");
+  check(x.escrow.strangerCannotRelease && x.escrow.payeeCannotRelease, "neither a stranger nor the studio itself can release escrowed money");
+  check(x.escrow.studioDelta === 300_000_000n && x.escrow.clientDelta === 500_000_000n && x.escrow.heldAfter === 0n && x.escrow.final?.status === "Closed", "client released $300 to the studio, the studio refunded $500 to the client; escrow closed holding nothing");
+  check(x.agent.status === 200 && x.agent.settlement?.success === true && x.agent.receiptRecorded, "an AI agent paid over x402 from its on-chain allowance, gaslessly; the payment has a receipt");
+  check(x.agent.overLimitRefused && x.agent.strangerRefused, "the contract refused a payment above the agent's limit, and one to a recipient not on its list");
+  check(x.agent.allowance?.revoked === true && x.agent.ownerRefund === 4_900_000n && x.agent.agentNearSpent === 0n, "revoking returned the unspent $4.90 to the owner; the agent spent no NEAR at all");
 } catch (e) {
   exit = 1;
   console.error(red(`\nDemo failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`));

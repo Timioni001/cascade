@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_ACCOUNT_ID, DEFAULT_PRIVATE_KEY, type Sandbox } from "near-sandbox";
 import { KeyPair, actions, type Account, type KeyPairString } from "near-api-js";
 import { MemoryStore } from "@cascade/db";
-import { Checkout, Engine, Refunds, checkoutHooks, mintingDriver, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
+import { Billing, Checkout, Engine, Refunds, checkoutHooks, mintingDriver, directExecutor, expectOk, gaslessExecutor, type Executor, type RelaySink } from "@cascade/engine";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { apiApp } from "@cascade/api";
@@ -58,6 +58,7 @@ export interface World {
   settler: Settler;
   checkout: Checkout;
   refunds: Refunds;
+  billing: Billing;
   /** Base URL of the checkout API served from this process, e.g. http://127.0.0.1:41234 */
   apiUrl: string;
   as: (account: Account) => Executor;
@@ -139,14 +140,17 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
   const engine = new Engine({ chain, oneclick, store, app: ids.app, usdc: ids.usdc, publicUrl: "https://cascade.link" });
   const relayer = new Relayer({
     chain, payer: relayerAcc, app: ids.app, usdc: ids.usdc, factory: ids.factory, daoFactory: ids.daoFactory,
-    limits: { namesPerIp: { max: 100, windowMs: 86_400_000 } },
+    limits: { namesPerIp: { max: 100, windowMs: 86_400_000 }, relayPerIp: { max: 10_000, windowMs: 3_600_000 }, relayPerAccount: { max: 1_000, windowMs: 3_600_000 } },
   });
   const sink: RelaySink = { relay: (b64) => relayer.relay(b64, { ip: "127.0.0.1" }) };
   // 0.3% Cascade fee, paid by customers into an Intents account (shown on the checkout page).
-  const checkout = new Checkout({ store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000", fee: { recipient: ids.factory, bps: 30 } });
+  const checkout = new Checkout({
+    store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000", fee: { recipient: ids.factory, bps: 30 }, usdc: ids.usdc, relayer: ids.relayer,
+  });
   const refunds = new Refunds(checkout);
-  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout, fetch, refunds) });
-  const server = serve({ fetch: apiApp({ checkout, refunds, dev: { oneclick } }).fetch, port: opts.apiPort ?? 0, hostname: "127.0.0.1" });
+  const billing = new Billing(checkout);
+  const settler = new Settler({ oneclick, store, chain: nearSettlerChain(chain, settlerAcc, ids.app), hooks: checkoutHooks(checkout, fetch, refunds, billing) });
+  const server = serve({ fetch: apiApp({ checkout, refunds, billing, dev: { oneclick } }).fetch, port: opts.apiPort ?? 0, hostname: "127.0.0.1" });
   await new Promise<void>((r) => (server.listening ? r() : server.once("listening", () => r())));
   const apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
@@ -187,7 +191,7 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
   }
 
   return {
-    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler, checkout, refunds, apiUrl,
+    sandbox, chain, root, oneclick, store, engine, relayer, sink, settler, checkout, refunds, billing, apiUrl,
     as: direct,
     usdcBalance,
     nearBalance: (a) => chain.nearBalance(a),

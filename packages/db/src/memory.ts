@@ -17,6 +17,23 @@ export class MemoryStore implements Store {
   private claims = new Map<string, number>();
   private counters = new Map<string, { window: number; count: number }>();
 
+  private docs = new Map<string, { kind: string; merchantId: string; seq: number; doc: unknown }>();
+  private docSeq = 0;
+  async putDoc<T>(kind: string, id: string, merchantId: string, doc: T) {
+    const prev = this.docs.get(`${kind}:${id}`);
+    this.docs.set(`${kind}:${id}`, { kind, merchantId, seq: prev?.seq ?? this.docSeq++, doc: clone(doc) });
+  }
+  async getDoc<T>(kind: string, id: string) {
+    const d = this.docs.get(`${kind}:${id}`);
+    return d ? (clone(d.doc) as T) : null;
+  }
+  async listDocs<T>(kind: string, merchantId?: string) {
+    return [...this.docs.values()]
+      .filter((d) => d.kind === kind && (merchantId === undefined || d.merchantId === merchantId))
+      .sort((a, b) => a.seq - b.seq)
+      .map((d) => clone(d.doc) as T);
+  }
+
   async claimOnce(key: string, ttlMs: number, now: number) {
     const until = this.claims.get(key);
     if (until !== undefined && until > now) return false;

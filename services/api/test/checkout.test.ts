@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Owner } from "@cascade/core";
 import { MemoryStore } from "@cascade/db";
-import { Checkout, checkoutHooks, onboardingMessage, type OnboardingProof } from "@cascade/engine";
+import { Checkout, checkoutHooks, onboardingMessage, payoutMessage, type OnboardingProof } from "@cascade/engine";
 import type { Chain, TxResult } from "@cascade/near";
 import { MemoryDriver, MockOneClick } from "@cascade/oneclick";
 import { verifyWebhook, type CheckoutSession, type WebhookEvent } from "@cascade/sdk";
@@ -175,7 +175,7 @@ describe("sessions", () => {
     expect(hooks).toHaveLength(1);
     const event = (await verifyWebhook(hooks[0]!.body, hooks[0]!.sig, secret, { now: Math.floor(now / 1000) })) as WebhookEvent;
     expect(event.type).toBe("checkout.session.completed");
-    expect(event.data.session).toMatchObject({ id: s.id, reference: "order-42", status: "paid" });
+    expect("session" in event.data && event.data.session).toMatchObject({ id: s.id, reference: "order-42", status: "paid" });
 
     // Paid sessions cannot be paid again, and another tick sends nothing new.
     expect((await call("POST", `/v1/public/sessions/${s.id}/pay`, { assetId: ETH_BASE, refundTo: "0xabc" })).status).toBe(409);
@@ -215,6 +215,62 @@ describe("sessions", () => {
     expect((await checkout.getSession(s.id)).status).toBe("expired");
     expect(JSON.parse(hooks[1]!.body).type).toBe("checkout.session.expired");
     expect((await call("POST", `/v1/public/sessions/${s.id}/preview`, { assetId: ETH_BASE })).status).toBe(410);
+  });
+
+  it("payout preference: settles as USDC on Base, only with the account's signature", async () => {
+    const { auth } = await merchant();
+    const payout = { chain: "base", address: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D" };
+    const signed = (p: typeof payout | null, signer = "shop.near") => {
+      const issuedAt = new Date(now).toISOString();
+      return { signer, publicKey: "ed25519:x", issuedAt, nonce: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64"), signature: Buffer.from(payoutMessage({ account: "shop.near", payout: p, issuedAt })).toString("base64") };
+    };
+    const before = (await (await call("POST", "/v1/checkout/sessions", { amount: "25000000", description: "Mug" }, auth)).json()) as CheckoutSession;
+
+    // The secret key alone cannot redirect money.
+    expect((await call("POST", "/v1/merchant/payout", { payout }, auth)).status).toBe(400);
+    const forged = { ...signed(payout), signature: Buffer.from(payoutMessage({ account: "shop.near", payout: { ...payout, address: "0x000000000000000000000000000000000000dEaD" }, issuedAt: new Date(now).toISOString() })).toString("base64") };
+    expect((await call("POST", "/v1/merchant/payout", { payout, proof: forged }, auth)).status).toBe(401);
+    expect((await call("POST", "/v1/merchant/payout", { payout, proof: signed(payout, "mallory.near") }, auth)).status).toBe(403);
+    expect((await call("POST", "/v1/merchant/payout", { payout: { chain: "base", address: "shop.near" }, proof: signed(payout) }, auth)).status).toBe(400);
+    expect((await call("POST", "/v1/merchant/payout", { payout: { chain: "doge", address: "D1" }, proof: signed(payout) }, auth)).status).toBe(400);
+    const ok = await call("POST", "/v1/merchant/payout", { payout, proof: signed(payout) }, auth);
+    expect(await ok.json()).toEqual({ payout });
+
+    // New sessions settle on Base; the open one keeps the destination it was created with.
+    const s = (await (await call("POST", "/v1/checkout/sessions", { amount: "25000000", description: "Mug" }, auth)).json()) as CheckoutSession;
+    expect(s.payout).toEqual(payout);
+    expect(((await (await call("GET", `/v1/public/sessions/${before.id}`)).json()) as CheckoutSession).payout).toBeNull();
+    await call("POST", `/v1/public/sessions/${s.id}/pay`, { assetId: ETH_BASE, refundTo: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D" });
+    const rec = (await store.listPayments({ direction: "in" })).find((p) => p.sessionId === s.id)!;
+    expect(rec.quote.quoteRequest).toMatchObject({ destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", recipient: payout.address, amount: "25000000" });
+    expect(rec.destChain).toBe("base");
+    await call("POST", `/v1/public/dev/sessions/${s.id}/simulate-deposit`);
+    await settler.tick();
+    const done = (await (await call("GET", `/v1/checkout/sessions/${s.id}`, undefined, auth)).json()) as CheckoutSession;
+    expect(done.status).toBe("paid"); // still recorded on NEAR as the receipt ledger
+    expect(Checkout.receiptHash({ ...(await store.getSession(s.id))! })).not.toBe(Checkout.receiptHash({ ...(await store.getSession(s.id))!, payout: null }));
+
+    // Back to NEAR with a signature for null.
+    expect(await (await call("POST", "/v1/merchant/payout", { payout: null, proof: signed(null) }, auth)).json()).toEqual({ payout: null });
+  });
+
+  it("team access: a read-only key can look but not act; keys are listed and revoked", async () => {
+    const { auth } = await merchant();
+    const r = await call("POST", "/v1/merchant/keys", { role: "read", label: "Accountant" }, auth);
+    expect(r.status).toBe(201);
+    const { key, prefix } = (await r.json()) as { key: string; prefix: string };
+    expect(key).toMatch(/^rk_test_/);
+    const ro = { authorization: `Bearer ${key}` };
+    expect((await call("GET", "/v1/checkout/sessions", undefined, ro)).status).toBe(200);
+    expect((await call("GET", "/v1/reports/ledger.csv", undefined, ro)).status).toBe(200);
+    expect((await call("POST", "/v1/checkout/sessions", { amount: "1000000", description: "x" }, ro)).status).toBe(403);
+    expect((await call("POST", "/v1/merchant/keys", { role: "full" }, ro)).status).toBe(403); // cannot escalate
+    const list = (await (await call("GET", "/v1/merchant/keys", undefined, auth)).json()) as { data: { prefix: string; role: string; label: string | null }[] };
+    expect(list.data.map((k) => [k.role, k.label])).toEqual([["full", null], ["read", "Accountant"]]);
+    expect(JSON.stringify(list)).not.toMatch(/"hash"/);
+    expect((await call("POST", `/v1/merchant/keys/${list.data[0]!.prefix}/revoke`, {}, auth)).status).toBe(400); // not itself
+    expect((await call("POST", `/v1/merchant/keys/${prefix}/revoke`, {}, auth)).status).toBe(200);
+    expect((await call("GET", "/v1/checkout/sessions", undefined, ro)).status).toBe(401);
   });
 
   it("public routes: unknown or malformed ids are 404, assets are listed", async () => {

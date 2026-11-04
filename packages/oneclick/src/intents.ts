@@ -40,6 +40,8 @@ export interface IncomingQuoteParams {
   recipientMsg?: string;
   /** Platform fee, paid by the payer on top of the exact output. */
   appFee?: { recipient: string; bps: number };
+  /** Settle in another 1Click asset (the merchant's payout preference, e.g. USDC on Base); `owner` is then an address on that chain. */
+  destAsset?: string;
 }
 
 export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
@@ -50,7 +52,7 @@ export function incomingQuote(p: IncomingQuoteParams): QuoteRequest {
     slippageTolerance: p.slippageBps ?? DEFAULT_SLIPPAGE_BPS,
     originAsset: p.payAsset,
     depositType: "ORIGIN_CHAIN",
-    destinationAsset: USDC_NEAR_ASSET,
+    destinationAsset: p.destAsset ?? USDC_NEAR_ASSET,
     amount: p.amountOut.toString(),
     refundTo: p.refundTo,
     refundType: p.refundType ?? "ORIGIN_CHAIN",
