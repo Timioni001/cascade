@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Download, FileText, LayoutGrid, Link2, Loader2, LogOut, Plus, ReceiptText, RefreshCw, Undo2, Webhook } from "lucide-react";
 import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
 import { Badge, Brand, DemoBanner, toneOf, usd } from "../components/ui";
+import { API } from "../../lib/api";
 
 type Webhook = { id: string; type: string; status: string; attempts: number; lastError: string | null; createdAt: string };
 type Me = { name: string; account: string; webhookUrl: string | null };
@@ -19,9 +20,10 @@ const readKey = () => {
 };
 
 async function call<T>(key: string, path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`/api/dashboard/${path}`, {
+  // Same origin as the API, so the secret key goes straight to it (it is kept in this tab's sessionStorage only).
+  const r = await fetch(`${API}/v1/${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "x-cascade-key": key, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+    headers: { authorization: `Bearer ${key}`, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const j = (await r.json().catch(() => ({}))) as T & { error?: { message: string } };
@@ -339,7 +341,7 @@ export default function Dashboard() {
               <div className="row">
                 <input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ maxWidth: 200 }} aria-label="Month" />
                 <button className="btn" onClick={() => run(async () => {
-                  const r = await fetch(`/api/dashboard/reports/ledger.csv?month=${month}`, { headers: { "x-cascade-key": key } });
+                  const r = await fetch(`${API}/v1/reports/ledger.csv?month=${month}`, { headers: { authorization: `Bearer ${key}` } });
                   if (!r.ok) throw new Error(`HTTP ${r.status}`);
                   const url = URL.createObjectURL(await r.blob());
                   const a = document.createElement("a");

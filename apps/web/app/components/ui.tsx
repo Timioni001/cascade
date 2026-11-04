@@ -46,6 +46,7 @@ export function DemoBanner() {
   if (!SANDBOX) return null;
   return (
     <div className="banner" role="note">
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--ok)" }} />
       {NETWORK === "testnet" ? "Live on NEAR testnet." : "Local sandbox."} Contracts and receipts are real; the cross-chain swap is simulated.
     </div>
   );
@@ -64,21 +65,15 @@ export function toneOf(status: string): Tone {
   return "warn";
 }
 
-const CHAIN_COLORS: Record<string, string> = {
-  near: "#00ec97", eth: "#8c9eff", base: "#2f6bff", arb: "#28a0f0", op: "#ff0420", pol: "#8247e5", bsc: "#f0b90b",
-  sol: "#14f195", btc: "#f7931a", tron: "#ff3b30", ton: "#0098ea", doge: "#c2a633", xrp: "#9aa4b2", sui: "#4da2ff", zec: "#f4b728",
-};
-
-/** A coin mark: symbol initials on a chain-tinted disc (no third-party logos). */
-export function CoinMark({ symbol, chain, size = 36 }: { symbol: string; chain: string; size?: number }) {
-  const color = CHAIN_COLORS[chain] ?? "#9aa4b2";
+/** A coin mark: the symbol on a neutral disc. Monochrome on purpose (no third-party logos, no rainbow). */
+export function CoinMark({ symbol, size = 36 }: { symbol: string; chain?: string; size?: number }) {
   return (
     <span
       aria-hidden="true"
       style={{
         width: size, height: size, borderRadius: "50%", display: "inline-grid", placeItems: "center", flex: "none",
-        background: `color-mix(in srgb, ${color} 18%, transparent)`, color, fontSize: size * 0.32, fontWeight: 700, letterSpacing: "-0.02em",
-        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 35%, transparent)`,
+        background: "var(--card-2)", color: "var(--ink)", border: "1px solid var(--line)",
+        fontSize: Math.round(size * (symbol.length > 3 ? 0.26 : 0.3)), fontWeight: 600, letterSpacing: "-0.02em",
       }}
     >
       {symbol.slice(0, 4)}

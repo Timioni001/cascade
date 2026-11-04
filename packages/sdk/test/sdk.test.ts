@@ -70,8 +70,8 @@ describe("payment URIs", () => {
     expect(paymentUri({ chain: "arb", depositAddress: to, amount: "5000000", decimals: 6, tokenContract: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" })).toBe(
       `ethereum:0xaf88d065e77c8cc2239327c5edb3a432268e5831@42161/transfer?address=${to}&uint256=5000000`,
     );
-    expect(paymentUri({ chain: "sol", depositAddress: "So1Addr", amount: 25_000_000n, decimals: 6, tokenContract: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", label: "Lagos Prints", message: "A2 poster" })).toBe(
-      "solana:So1Addr?amount=25&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&label=Lagos%20Prints&message=A2%20poster",
+    expect(paymentUri({ chain: "sol", depositAddress: "So1Addr", amount: 25_000_000n, decimals: 6, tokenContract: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", label: "Oakline Ceramics", message: "Stoneware mug" })).toBe(
+      "solana:So1Addr?amount=25&spl-token=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&label=Oakline%20Ceramics&message=Stoneware%20mug",
     );
     expect(paymentUri({ chain: "btc", depositAddress: "bc1qxyz", amount: 36_765n, decimals: 8, tokenContract: null })).toBe("bitcoin:bc1qxyz?amount=0.00036765");
     expect(paymentUri({ chain: "ton", depositAddress: "x", amount: 1n, decimals: 9, tokenContract: null })).toBeNull();
@@ -83,7 +83,7 @@ describe("payment URIs", () => {
 describe("x402", () => {
   it("encodes headers as base64 JSON, unicode-safe", async () => {
     const { encodeHeader, decodeHeader } = await import("../src/x402.js");
-    const v = { a: "Lagos at dusk — ₦", n: 1 };
+    const v = { a: "Mug — glazé €", n: 1 };
     expect(decodeHeader(encodeHeader(v))).toEqual(v);
   });
 

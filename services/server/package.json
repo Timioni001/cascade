@@ -6,13 +6,8 @@
   "license": "MIT",
   "main": "./src/main.ts",
   "dependencies": {
-    "@cascade/api": "workspace:*",
     "@cascade/db": "workspace:*",
-    "@cascade/engine": "workspace:*",
-    "@cascade/near": "workspace:*",
-    "@cascade/oneclick": "workspace:*",
-    "@cascade/relayer": "workspace:*",
-    "@cascade/settler": "workspace:*",
+    "@cascade/platform": "workspace:*",
     "@hono/node-server": "2.1.5",
     "hono": "4.12.34",
     "near-api-js": "7.4.0"

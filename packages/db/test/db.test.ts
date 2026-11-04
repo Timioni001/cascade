@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MockOneClick, incomingQuote } from "@cascade/oneclick";
-import { MemoryStore, SqliteStore, isOpen, ledgerRows, toCsv, type PaymentRecord, type Store } from "../src/index.js";
+import { readFileSync } from "node:fs";
+import { MemoryStore, SCHEMA, SqliteStore, StoreLimiter, isOpen, ledgerRows, toCsv, type PaymentRecord, type Store } from "../src/index.js";
 
 async function payment(): Promise<PaymentRecord> {
   const m = new MockOneClick({ now: () => Date.parse("2026-11-04T10:00:00Z") });
@@ -24,8 +25,36 @@ for (const [name, make] of [["memory", async () => new MemoryStore()], ["sqlite"
       expect(await s.listPayments({ open: true })).toHaveLength(1);
       expect(await s.listPayments({ owner: "bob.near" })).toHaveLength(0);
     });
+
+    it("claims a key once until it expires (nonces, leases)", async () => {
+      const s: Store = await make();
+      expect(await s.claimOnce("n1", 1000, 0)).toBe(true);
+      expect(await s.claimOnce("n1", 1000, 999)).toBe(false);
+      expect(await s.claimOnce("n2", 1000, 999)).toBe(true);
+      expect(await s.claimOnce("n1", 1000, 1000)).toBe(true); // expired: taken over
+      expect(await s.claimOnce("n1", 1000, 1500)).toBe(false);
+    });
+
+    it("counts hits per fixed window; the limiter uses it", async () => {
+      const s: Store = await make();
+      expect([await s.hit("k", 100, 0), await s.hit("k", 100, 50), await s.hit("k", 100, 99, 0)]).toEqual([1, 2, 2]);
+      expect(await s.hit("k", 100, 100)).toBe(1);
+      let t = 0;
+      const l = new StoreLimiter(s, () => t);
+      const rule = { max: 2, windowMs: 1000 };
+      expect([await l.take("a", rule), await l.take("a", rule), await l.peek("a", rule), await l.take("a", rule)]).toEqual([true, true, false, false]);
+      t = 1000;
+      expect(await l.peek("a", rule)).toBe(true);
+    });
   });
 }
+
+describe("D1 migration", () => {
+  it("is the same schema the Node store creates", () => {
+    const sql = readFileSync(new URL("../../../services/worker/migrations/0001_init.sql", import.meta.url), "utf8");
+    expect(sql.replace(/^--.*\n/gm, "").trim()).toBe(SCHEMA);
+  });
+});
 
 describe("ledger", () => {
   it("writes a CSV an accountant can open", async () => {

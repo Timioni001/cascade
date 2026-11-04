@@ -102,8 +102,8 @@ beforeEach(async () => {
   settler = new Settler({ oneclick, store, chain: new FakeSettlerChain(), now: () => now, hooks: checkoutHooks(checkout, fakeFetch, refunds) });
   const issuedAt = new Date(now).toISOString();
   const r = await call("POST", "/v1/merchants", {
-    account: "shop.near", name: "Lagos Prints", webhookUrl: "https://shop.example/hook",
-    proof: { signer: "shop.near", publicKey: "ed25519:x", issuedAt, nonce: Buffer.alloc(32, 7).toString("base64"), signature: Buffer.from(onboardingMessage({ account: "shop.near", name: "Lagos Prints", issuedAt })).toString("base64") },
+    account: "shop.near", name: "Oakline Ceramics", webhookUrl: "https://shop.example/hook",
+    proof: { signer: "shop.near", publicKey: "ed25519:x", issuedAt, nonce: Buffer.alloc(32, 7).toString("base64"), signature: Buffer.from(onboardingMessage({ account: "shop.near", name: "Oakline Ceramics", issuedAt })).toString("base64") },
   });
   const j = (await r.json()) as { secretKey: string; webhookSecret: string };
   secret = j.webhookSecret;

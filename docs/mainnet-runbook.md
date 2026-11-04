@@ -27,39 +27,27 @@ cp .env.example .env.testnet && chmod 600 .env.testnet
 3. `pnpm deploy:cascade --dry-run`, read it, then `pnpm deploy:cascade`. It creates `relayer.` and `settler.` accounts (keys appended to `.env`), the mock USDC (minter: your root), the locked app and the factory, and verifies them. Result: `deployments/testnet.json` (commit it).
 4. Optional checks: `pnpm spike name`, then `pnpm spike relay` (a name, then a fee-free registration; the user's NEAR change is 0).
 
-### A2. Host the backend (testnet demo mode)
+### A2. Host it on Cloudflare (free)
 
-Same server as production, with the swap simulated. Add to `.env`:
+One Worker serves everything (pages, API, relayer, demo shop) with D1 as the database and a cron trigger for the settler, so nothing has to stay up on your machine through judging (Nov 16-18). Add to `.env`:
 
 ```
-CASCADE_ONECLICK=mock        # testnet only; the server refuses it on mainnet
-CASCADE_PUBLIC_URL=https://<your web app URL>
+CASCADE_ONECLICK=mock        # testnet only; the platform refuses it on mainnet
 CASCADE_FEE_BPS=30           # optional: shows the fee line in checkout
 CASCADE_FEE_RECIPIENT=<root>.testnet
 ```
 
 `CASCADE_ROOT_PRIVATE_KEY` must be set: in demo mode the root mints the mock USDC that a "simulated payment" delivers. That key controls only testnet accounts.
 
-Run it where it can stay up through judging (Nov 16-18): `docker compose up -d --build` on any small host, or `pnpm backend` on your machine behind a free tunnel (`cloudflared tunnel --url http://localhost:8788`). Details: [hosting.md](hosting.md).
+Then follow [hosting.md, Cloudflare](hosting.md#cloudflare): `wrangler login`, `wrangler d1 create cascade`, `pnpm cf:configure --url https://cascade.<you>.workers.dev --database-id <id>`, `wrangler secret bulk`, `pnpm cf:deploy`. To rehearse first with no account: `pnpm worker:local`.
 
-### A3. Host the web app (Vercel, free)
-
-Root directory `apps/web`, env:
-
-```
-NEXT_PUBLIC_CASCADE_API=https://<backend URL>
-CASCADE_API_URL=https://<backend URL>
-NEXT_PUBLIC_NEAR_NETWORK=testnet
-NEXT_PUBLIC_SANDBOX=1        # shows the banner and the "Simulate the payment" button
-```
-
-### A4. Onboard the demo shop
+### A3. Onboard the demo shop
 
 ```bash
-pnpm demo-merchant --api https://<backend> --web https://<web>
+pnpm demo-merchant --api https://cascade.<you>.workers.dev --web https://cascade.<you>.workers.dev
 ```
 
-It creates `lagos-prints.<root>`, registers it fee-free, onboards it with a signed message, and saves `DEMO_SHOP_SECRET_KEY` / `DEMO_SHOP_WEBHOOK_SECRET` to `.env`. Set them on Vercel as `CASCADE_SECRET_KEY` / `CASCADE_WEBHOOK_SECRET` and redeploy. Then open `https://<web>/shop`, pay, and check the receipt's testnet transaction on testnet.nearblocks.io.
+It creates `oakline.<root>`, registers it fee-free, onboards it with a signed message, and saves `DEMO_SHOP_SECRET_KEY` / `DEMO_SHOP_WEBHOOK_SECRET` to `.env`. Run `pnpm cf:configure --url ...` again and `wrangler secret bulk .secrets.json` to hand the shop its keys. Then open `/shop`, pay, and check the receipt's testnet transaction on testnet.nearblocks.io.
 
 ## Part B. Mainnet proof (under $5)
 

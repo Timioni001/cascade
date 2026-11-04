@@ -86,7 +86,7 @@ function fakeAddress(chain: string, seed: string): string {
 const SPREAD_BPS = 30n;
 const UNAUTH_FEE_BPS = 20n;
 
-interface Record_ {
+export interface MockRecord {
   response: QuoteResponse;
   status: ExecutionStatus;
   updatedAt: string;
@@ -95,7 +95,32 @@ interface Record_ {
   deadlineMs: number;
 }
 
+/**
+ * Where the mock keeps its quotes. In memory by default; a serverless
+ * deployment passes a database-backed one so every isolate sees the same swaps.
+ */
+export interface MockRecords {
+  get(depositAddress: string): Promise<MockRecord | undefined>;
+  set(depositAddress: string, r: MockRecord): Promise<void>;
+  keys(): Promise<string[]>;
+}
+
+export class MemoryMockRecords implements MockRecords {
+  private readonly m = new Map<string, MockRecord>();
+  async get(a: string) {
+    const r = this.m.get(a);
+    return r ? structuredClone(r) : undefined;
+  }
+  async set(a: string, r: MockRecord) {
+    this.m.set(a, structuredClone(r));
+  }
+  async keys() {
+    return [...this.m.keys()];
+  }
+}
+
 export interface MockOneClickOptions {
+  records?: MockRecords;
   driver?: MockDriver;
   /** Behave as if a partner JWT is configured. */
   authenticated?: boolean;
@@ -109,13 +134,14 @@ export class MockOneClick implements OneClick {
   private readonly now: () => number;
   private readonly seed: string;
   private n = 0;
-  private readonly records = new Map<string, Record_>();
+  private readonly records: MockRecords;
 
   constructor(opts: MockOneClickOptions = {}) {
     this.driver = opts.driver ?? new MemoryDriver();
     this.authenticated = opts.authenticated ?? false;
     this.now = opts.now ?? Date.now;
     this.seed = opts.seed ?? "cascade-mock";
+    this.records = opts.records ?? new MemoryMockRecords();
   }
 
   async tokens(): Promise<Token[]> {
@@ -192,7 +218,7 @@ export class MockOneClick implements OneClick {
       response.quote.depositAddress = depositAddress;
       response.quote.deadline = req.deadline;
       response.quote.timeWhenInactive = req.deadline;
-      this.records.set(depositAddress, {
+      await this.records.set(depositAddress, {
         response,
         status: "PENDING_DEPOSIT",
         updatedAt: response.timestamp,
@@ -205,19 +231,20 @@ export class MockOneClick implements OneClick {
     return response;
   }
 
-  private rec(depositAddress: string): Record_ {
-    const r = this.records.get(depositAddress);
+  private async rec(depositAddress: string): Promise<MockRecord> {
+    const r = await this.records.get(depositAddress);
     if (!r) throw new OneClickError(404, { message: "Deposit address not found" }, "404 deposit address");
     return r;
   }
 
-  private set(r: Record_, status: ExecutionStatus, details: Partial<SwapDetails> = {}) {
+  private async set(r: MockRecord, status: ExecutionStatus, details: Partial<SwapDetails> = {}) {
     r.status = status;
     r.updatedAt = new Date(this.now()).toISOString();
     r.details = { ...r.details, ...details };
+    await this.records.set(r.response.quote.depositAddress!, r);
   }
 
-  private view(r: Record_): StatusResponse {
+  private view(r: MockRecord): StatusResponse {
     return {
       correlationId: r.response.correlationId,
       quoteResponse: r.response,
@@ -228,35 +255,35 @@ export class MockOneClick implements OneClick {
   }
 
   async status(depositAddress: string): Promise<StatusResponse> {
-    const r = this.rec(depositAddress);
+    const r = await this.rec(depositAddress);
     if (r.direction === "out" && (r.status === "PENDING_DEPOSIT" || r.status === "KNOWN_DEPOSIT_TX")) {
       const got = await this.driver.usdcBalance(depositAddress);
       const q = r.response.quote;
       if (got > 0n && this.now() > r.deadlineMs) {
         const tx = await this.driver.deliverUsdc(r.response.quoteRequest.refundTo, got);
-        this.set(r, "REFUNDED", {
+        await this.set(r, "REFUNDED", {
           depositedAmount: got.toString(), refundedAmount: got.toString(), refundReason: "DEADLINE_EXCEEDED",
           nearTxHashes: [tx],
         });
       } else if (got >= BigInt(q.minAmountIn)) {
         const dest = this.token(r.response.quoteRequest.destinationAsset).blockchain;
         const h = fakeHash(`${this.seed}:dest:${depositAddress}`);
-        this.set(r, "SUCCESS", {
+        await this.set(r, "SUCCESS", {
           depositedAmount: got.toString(), amountIn: got.toString(), amountOut: q.amountOut,
           amountOutFormatted: q.amountOutFormatted, amountOutUsd: q.amountOutUsd,
           destinationChainTxHashes: [{ hash: `0x${h}`, explorerUrl: `mock://${dest}/tx/0x${h}` }],
         });
       } else if (got > 0n) {
-        this.set(r, "INCOMPLETE_DEPOSIT", { depositedAmount: got.toString() });
+        await this.set(r, "INCOMPLETE_DEPOSIT", { depositedAmount: got.toString() });
       }
     }
     return this.view(r);
   }
 
   async submitDeposit(req: SubmitDepositRequest): Promise<StatusResponse> {
-    const r = this.rec(req.depositAddress);
+    const r = await this.rec(req.depositAddress);
     if (r.status === "PENDING_DEPOSIT") {
-      this.set(r, "KNOWN_DEPOSIT_TX", { originChainTxHashes: [{ hash: req.txHash, explorerUrl: `mock://tx/${req.txHash}` }] });
+      await this.set(r, "KNOWN_DEPOSIT_TX", { originChainTxHashes: [{ hash: req.txHash, explorerUrl: `mock://tx/${req.txHash}` }] });
     }
     return this.status(req.depositAddress);
   }
@@ -268,23 +295,23 @@ export class MockOneClick implements OneClick {
    * origin asset to an incoming quote's deposit address.
    */
   async simulatePayerDeposit(depositAddress: string, opts: { amount?: bigint; fail?: boolean } = {}): Promise<StatusResponse> {
-    const r = this.rec(depositAddress);
+    const r = await this.rec(depositAddress);
     if (r.direction !== "in") throw new Error("simulatePayerDeposit is for incoming quotes");
     const q = r.response.quote;
     const amount = opts.amount ?? BigInt(q.amountIn);
     const originTx = { hash: `0x${fakeHash(`${this.seed}:origin:${depositAddress}`)}`, explorerUrl: "mock://origin" };
     if (this.now() > r.deadlineMs || amount < BigInt(q.minAmountIn) || opts.fail) {
-      this.set(r, "REFUNDED", {
+      await this.set(r, "REFUNDED", {
         depositedAmount: amount.toString(), refundedAmount: amount.toString(),
         refundReason: opts.fail ? "SWAP_FAILED" : amount < BigInt(q.minAmountIn) ? "PARTIAL_DEPOSIT" : "DEADLINE_EXCEEDED",
         originChainTxHashes: [originTx],
       });
       return this.view(r);
     }
-    this.set(r, "PROCESSING", { depositedAmount: amount.toString(), originChainTxHashes: [originTx] });
+    await this.set(r, "PROCESSING", { depositedAmount: amount.toString(), originChainTxHashes: [originTx] });
     const out = BigInt(q.amountOut);
     const tx = await this.driver.deliverUsdc(r.response.quoteRequest.recipient, out, r.response.quoteRequest.customRecipientMsg);
-    this.set(r, "SUCCESS", {
+    await this.set(r, "SUCCESS", {
       amountIn: amount.toString(), amountInFormatted: q.amountInFormatted, amountInUsd: q.amountInUsd,
       amountOut: out.toString(), amountOutFormatted: q.amountOutFormatted, amountOutUsd: q.amountOutUsd,
       nearTxHashes: [tx], destinationChainTxHashes: [{ hash: tx, explorerUrl: `mock://near/tx/${tx}` }],
@@ -293,7 +320,7 @@ export class MockOneClick implements OneClick {
   }
 
   /** All deposit addresses this mock has issued, oldest first. */
-  depositAddresses(): string[] {
-    return [...this.records.keys()];
+  depositAddresses(): Promise<string[]> {
+    return this.records.keys();
   }
 }

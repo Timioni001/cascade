@@ -1,0 +1,32 @@
+// Cascade on Cloudflare: one Worker (web app + API + relayer + demo shop),
+// D1 for data, a cron trigger for the settler. Free plan.
+//
+// Non-secret settings are the vars below: `pnpm cf:configure` fills them from
+// deployments/<network>.json and .env. Secrets are set with
+// `wrangler secret put` (the same script prints the commands). See docs/hosting.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cascade",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "../../apps/web/out",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    // Static files are served without running the Worker (free and fast),
+    // except the API and the checkout/receipt shells, which need it.
+    "run_worker_first": ["/v1/*", "/relayer/*", "/api/*", "/health", "/c/*", "/r/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "cascade", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+  ],
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+  "vars": {
+    "NEAR_NETWORK": "testnet",
+    "CASCADE_PUBLIC_URL": "https://cascade.example.workers.dev",
+    "CASCADE_ONECLICK": "mock"
+  }
+}

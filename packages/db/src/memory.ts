@@ -14,6 +14,22 @@ export class MemoryStore implements Store {
   private sessions = new Map<string, CheckoutSessionRecord>();
   private hooks = new Map<string, WebhookDelivery>();
   private refunds = new Map<string, RefundRecord>();
+  private claims = new Map<string, number>();
+  private counters = new Map<string, { window: number; count: number }>();
+
+  async claimOnce(key: string, ttlMs: number, now: number) {
+    const until = this.claims.get(key);
+    if (until !== undefined && until > now) return false;
+    this.claims.set(key, now + ttlMs);
+    return true;
+  }
+  async hit(key: string, windowMs: number, now: number, add = 1) {
+    const window = Math.floor(now / windowMs);
+    const c = this.counters.get(key);
+    const count = (c && c.window === window ? c.count : 0) + add;
+    this.counters.set(key, { window, count });
+    return count;
+  }
 
   async putInvoice(doc: InvoiceDoc) {
     this.invoices.set(doc.id, clone(doc));

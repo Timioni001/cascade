@@ -1,6 +1,6 @@
 /**
- * The merchant story: a print shop in Lagos sells a poster to a customer who
- * pays in ETH on Base. Everything a real integration touches is real here:
+ * The merchant story: a ceramics studio sells a mug to a customer who pays
+ * in ETH on Base. Everything a real integration touches is real here:
  * an NEP-413 signature checked against the shop's on-chain key, the checkout
  * API over HTTP, the public SDK, a merchant webhook server that verifies
  * signatures, and the on-chain receipt. Only 1Click is mocked.
@@ -40,11 +40,11 @@ export interface CheckoutResult {
  * Onboard `who` as a merchant: sign the NEP-413 onboarding message with their
  * own key and POST it to the API, which checks it against the chain.
  */
-export async function onboardMerchant(w: World, who: Person, name: string, webhookUrl: string | null): Promise<{ secretKey: string; webhookSecret: string }> {
+export async function onboardMerchant(w: World, who: Person, name: string, webhookUrl: string | null, apiUrl = w.apiUrl): Promise<{ secretKey: string; webhookSecret: string }> {
   const issuedAt = new Date().toISOString();
   const nonce = crypto.getRandomValues(new Uint8Array(32));
   const signed = await who.full.signNep413Message({ message: onboardingMessage({ account: who.id, name, issuedAt }), recipient: ONBOARDING_RECIPIENT, nonce });
-  const r = await fetch(`${w.apiUrl}/v1/merchants`, {
+  const r = await fetch(`${apiUrl}/v1/merchants`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -78,8 +78,8 @@ function merchantServer(secret: () => string) {
 }
 
 export async function checkoutFlow(w: World, n: Narrator, opts: { dao?: string } = {}): Promise<CheckoutResult> {
-  n.step("14. A print shop adds Cascade Checkout to its website");
-  const shop = await w.signUp("lagos-prints");
+  n.step("14. A ceramics studio adds Cascade Checkout to its website");
+  const shop = await w.signUp("oakline");
   await w.engine.registerPerson(shop.gasless);
   n.ok(`${shop.id} signed up and registered (no fees)`);
 
@@ -89,17 +89,17 @@ export async function checkoutFlow(w: World, n: Narrator, opts: { dao?: string }
   await new Promise<void>((r) => m.server.listen(0, "127.0.0.1", () => r()));
   const hookUrl = `http://127.0.0.1:${(m.server.address() as AddressInfo).port}/cascade-webhook`;
 
-  const onboarded = await onboardMerchant(w, shop, "Lagos Prints", hookUrl);
+  const onboarded = await onboardMerchant(w, shop, "Oakline Ceramics", hookUrl);
   webhookSecret = onboarded.webhookSecret;
   n.ok(`Onboarded with a signed NEP-413 message (checked against ${shop.id}'s on-chain key). Secret key ${onboarded.secretKey.slice(0, 12)}…`);
 
   n.step("15. The shop's server creates a checkout session with the SDK");
   const cascade = new Cascade({ apiKey: onboarded.secretKey, baseUrl: w.apiUrl });
   const session = await cascade.checkout.create(
-    { amount: "25.00", description: "A2 poster, 'Lagos at dusk'", reference: "order-1001", metadata: { sku: "A2-DUSK" } },
+    { amount: "25.00", description: "Stoneware mug, 350 ml", reference: "order-1001", metadata: { sku: "MUG-STONE" } },
     { idempotencyKey: "order-1001" },
   );
-  const replay = await cascade.checkout.create({ amount: "25.00", description: "A2 poster, 'Lagos at dusk'" }, { idempotencyKey: "order-1001" });
+  const replay = await cascade.checkout.create({ amount: "25.00", description: "Stoneware mug, 350 ml" }, { idempotencyKey: "order-1001" });
   n.say(`  const session = await cascade.checkout.create({ amount: "25.00", reference: "order-1001" })`);
   n.ok(`Session ${session.id} for $${session.amountFormatted}. Checkout page: ${session.url}`);
   n.say(`A retried request with the same idempotency key returns the same session (${replay.id === session.id ? "same id" : "DIFFERENT id"}).`);
@@ -128,7 +128,7 @@ export async function checkoutFlow(w: World, n: Narrator, opts: { dao?: string }
   n.ok(`Session ${done.status}. On-chain receipt #${receipt?.id} (${receipt?.source}), bound to this session by hash: ${receiptHashMatches ? "yes" : "NO"}`);
   n.ok(`The shop's account received $${formatUsd(merchantUsdcDelta)} USDC directly; Cascade's contract never held it.`);
 
-  n.step("17. The shop's server gets a signed webhook and ships the poster");
+  n.step("17. The shop's server gets a signed webhook and ships the mug");
   for (let i = 0; i < 20 && m.accepted.length === 0; i++) await new Promise((res) => setTimeout(res, 100));
   const webhook = m.accepted[0] ?? null;
   n.ok(webhook ? `Verified ${webhook.type} for ${webhook.data.session.reference} with verifyWebhook(rawBody, header, secret)` : "no webhook arrived");
@@ -171,7 +171,7 @@ async function splitStory(w: World, n: Narrator, cascade: Cascade, shop: Person,
   ).value!;
   n.ok(`Split #${rule.id} is on-chain and immutable (created fee-free): ${rule.shares.map((x) => `${x.bps / 100}% ${x.account}`).join(", ")}`);
   const before = new Map(await Promise.all(rule.shares.map(async (x) => [x.account, await w.usdcBalance(x.account)] as const)));
-  const s = await cascade.checkout.create({ amount: "25.00", description: "A2 poster, collab edition", reference: "order-1002", splitId: rule.id });
+  const s = await cascade.checkout.create({ amount: "25.00", description: "Stoneware mug, collab glaze", reference: "order-1002", splitId: rule.id });
   await post(`${w.apiUrl}/v1/public/sessions/${s.id}/pay`, { assetId: USDC_BASE, refundTo: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D" });
   await post(`${w.apiUrl}/v1/public/dev/sessions/${s.id}/simulate-deposit`);
   n.say(`A customer pays $25 in USDC on Base. NEAR Intents delivers it to the Cascade contract with msg {"split": ${rule.id}} (1Click customRecipientMsg).`);
@@ -206,10 +206,10 @@ async function refundStory(w: World, n: Narrator, cascade: Cascade, shop: Person
 /** 20. An AI agent pays for one API call over HTTP 402 (x402 v2). */
 async function agentStory(w: World, n: Narrator, cascade: Cascade): Promise<CheckoutResult["agent"]> {
   n.step("20. An AI agent buys from the shop's paid API over HTTP 402 (x402)");
-  const guard = x402Guard(cascade, { price: "0.10", description: "Lagos 3-day forecast", assets: [USDC_BASE, ETH_BASE] });
+  const guard = x402Guard(cascade, { price: "0.10", description: "3-day forecast", assets: [USDC_BASE, ETH_BASE] });
   const handler = async (req: Request) => {
     const g = await guard(req);
-    return g.paid ? Response.json({ city: "Lagos", sky: ["storms", "sun", "rain"] }, { headers: g.headers }) : g.response;
+    return g.paid ? Response.json({ city: "Lisbon", sky: ["sun", "cloud", "rain"] }, { headers: g.headers }) : g.response;
   };
   let lastSig: string | null = null;
   const agentFetch: typeof fetch = async (u, init) => {
@@ -218,7 +218,7 @@ async function agentStory(w: World, n: Narrator, cascade: Cascade): Promise<Chec
     return handler(req);
   };
   let settling: Promise<unknown> = Promise.resolve();
-  const res = await fetchWithPayment("https://lagos-prints.example/api/forecast", {}, {
+  const res = await fetchWithPayment("https://oakline.example/api/forecast", {}, {
     fetch: agentFetch,
     refundTo: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D",
     pollMs: 300,
@@ -237,7 +237,7 @@ async function agentStory(w: World, n: Narrator, cascade: Cascade): Promise<Chec
   const header = res.headers.get(X402_HEADERS.response);
   const body = await res.json();
   n.ok(`HTTP ${res.status}: ${JSON.stringify(body)}. The shop received exactly $0.10 in USDC on NEAR.`);
-  const replay = await handler(new Request("https://lagos-prints.example/api/forecast", { headers: { [X402_HEADERS.signature]: lastSig! } }));
+  const replay = await handler(new Request("https://oakline.example/api/forecast", { headers: { [X402_HEADERS.signature]: lastSig! } }));
   const rh = replay.headers.get(X402_HEADERS.response);
   const replayReason = rh ? (decodeHeader<X402Settlement>(rh).errorReason ?? null) : null;
   n.say(`Replaying the same payment gets HTTP ${replay.status} (${replayReason}): one payment, one response.`);

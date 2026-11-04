@@ -7,7 +7,38 @@ import { DemoBanner, Mark } from "../components/ui";
 
 type Order = { id: string; status: string; receiptId?: number };
 
-/** Lagos Prints: a demo merchant using @cascade/sdk the way a real shop would. */
+/** The product shot: a stoneware mug, drawn (no stock photo). */
+function Mug() {
+  return (
+    <svg viewBox="0 0 400 400" width="100%" height="100%" role="img" aria-label="Stoneware mug in a matte oat glaze">
+      <defs>
+        <linearGradient id="body" x1="0" x2="1">
+          <stop offset="0" stopColor="#d9d3c8" />
+          <stop offset="0.55" stopColor="#ece8e1" />
+          <stop offset="1" stopColor="#c9c2b6" />
+        </linearGradient>
+        <linearGradient id="dip" x1="0" x2="1">
+          <stop offset="0" stopColor="#56524c" />
+          <stop offset="0.55" stopColor="#6d6862" />
+          <stop offset="1" stopColor="#4a4641" />
+        </linearGradient>
+        <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#000" stopOpacity="0.18" />
+          <stop offset="1" stopColor="#000" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="190" cy="318" rx="120" ry="16" fill="url(#shadow)" />
+      <path d="M262 168c40-4 58 20 54 46-4 30-30 46-60 44" fill="none" stroke="#cfc8bc" strokeWidth="18" strokeLinecap="round" />
+      <path d="M100 120h180v160c0 22-18 38-40 38h-100c-22 0-40-16-40-38z" fill="url(#body)" />
+      <path d="M100 230c30 8 60-6 90 2s60 6 90-4v52c0 22-18 38-40 38h-100c-22 0-40-16-40-38z" fill="url(#dip)" />
+      <ellipse cx="190" cy="120" rx="90" ry="14" fill="#c4bdb1" />
+      <ellipse cx="190" cy="121" rx="80" ry="10" fill="#8f877c" />
+      <path d="M120 140v120" stroke="#fff" strokeOpacity="0.35" strokeWidth="6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Oakline Ceramics: a demo merchant using @cascade/sdk the way a real shop would. */
 export default function Shop() {
   const [order, setOrder] = useState<Order | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,50 +73,48 @@ export default function Shop() {
   const paid = order?.status === "paid";
 
   return (
-    <div className="page" style={{ background: "#f4f3ee", color: "#151515", colorScheme: "light" }}>
+    <div className="page">
       <DemoBanner />
-      <header style={{ borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
-        <div className="container row" style={{ height: 64 }}>
-          <span style={{ fontWeight: 700, letterSpacing: "-0.03em", fontSize: 18 }}>Lagos Prints</span>
-          <span style={{ fontSize: 13, color: "#66665f" }}>Demo store · pays out through Cascade</span>
+      <header style={{ borderBottom: "1px solid var(--line)", background: "var(--card)" }}>
+        <div className="container row" style={{ height: 60 }}>
+          <span style={{ fontWeight: 600, letterSpacing: "-0.02em", fontSize: 17 }}>Oakline Ceramics</span>
+          <span className="small muted">Demo store · checkout by Cascade</span>
         </div>
       </header>
 
-      <main className="container" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,0.85fr)", gap: 40, padding: "48px 24px 64px", alignItems: "start" }}>
-        <div style={{ aspectRatio: "4 / 5", borderRadius: 28, overflow: "hidden", position: "relative", background: "linear-gradient(170deg,#f8b26a 0%,#e9707a 38%,#8e3b6e 66%,#1d1838 100%)", boxShadow: "0 30px 80px rgba(60,20,40,0.25)" }}>
-          <div style={{ position: "absolute", left: "50%", top: "40%", width: "34%", aspectRatio: "1", borderRadius: "50%", transform: "translate(-50%,-50%)", background: "radial-gradient(circle,#ffe7a8 0%,#ffbf6b 60%,transparent 70%)" }} />
-          <div style={{ position: "absolute", inset: "auto 0 0 0", height: "38%", background: "linear-gradient(180deg,transparent,#120f22 60%)" }} />
-          <div style={{ position: "absolute", left: 28, bottom: 24, color: "#f4f3ee", fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Lagos at dusk · A2</div>
+      <main className="container" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,0.9fr)", gap: 48, padding: "48px 24px 64px", alignItems: "start" }}>
+        <div style={{ aspectRatio: "1", borderRadius: "var(--r-xl)", overflow: "hidden", background: "#e9e6e0", border: "1px solid var(--line)", display: "grid", placeItems: "center", padding: "8%" }}>
+          <Mug />
         </div>
 
         <div className="stack-lg" style={{ position: "sticky", top: 32 }}>
-          <div style={{ fontSize: 13, color: "#66665f" }}>Giclée print · 420 × 594 mm</div>
-          <h1 className="h1" style={{ color: "#151515" }}>Lagos at dusk</h1>
-          <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em" }} className="num">$25.00</div>
-          <p style={{ color: "#44443f", margin: 0 }}>Third Mainland Bridge at the last minute of light. Archival ink on 310 gsm cotton rag, signed and numbered.</p>
+          <div className="small muted">Stoneware · 350 ml · dishwasher safe</div>
+          <h1 className="h1">Stoneware mug</h1>
+          <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.03em" }} className="num">$25.00</div>
+          <p className="soft" style={{ margin: 0 }}>Wheel-thrown, with a matte oat glaze and a charcoal dip. Each one is a little different.</p>
 
           {paid ? (
-            <div className="rise" style={{ background: "#fff", borderRadius: 20, padding: 20, border: "1px solid rgba(0,0,0,0.06)" }}>
+            <div className="card tight rise">
               <div className="row-start" style={{ gap: 12 }}>
-                <span style={{ width: 36, height: 36, borderRadius: 999, background: "#151515", color: "#d8f45c", display: "grid", placeItems: "center" }}><Check size={18} strokeWidth={3} /></span>
+                <span style={{ width: 34, height: 34, borderRadius: 999, background: "var(--ok-soft)", color: "var(--ok)", display: "grid", placeItems: "center" }}><Check size={17} strokeWidth={2.5} /></span>
                 <div>
                   <div style={{ fontWeight: 600 }}>Order {order!.id} is paid</div>
-                  <div style={{ fontSize: 13, color: "#66665f" }}>Confirmed by a signed webhook{order!.receiptId !== undefined ? ` · receipt #${order!.receiptId}` : ""}</div>
+                  <div className="small muted">Confirmed by a signed webhook{order!.receiptId !== undefined ? ` · receipt #${order!.receiptId}` : ""}</div>
                 </div>
               </div>
-              <div className="row-start" style={{ gap: 8, fontSize: 13, color: "#44443f", marginTop: 14 }}><Truck size={15} /> Ships within 2 days</div>
+              <div className="row-start small soft" style={{ gap: 8, marginTop: 14 }}><Truck size={15} /> Ships within 2 days</div>
             </div>
           ) : (
-            <button className="btn block" style={{ background: "#151515", color: "#f4f3ee", height: 56 }} onClick={buy} disabled={busy}>
+            <button className="btn block" style={{ height: 52 }} onClick={buy} disabled={busy}>
               {busy ? <Loader2 size={18} className="spin" /> : <Mark size={16} />} Pay with any crypto
             </button>
           )}
-          {order && !paid && <div className="row-start" style={{ fontSize: 13, color: "#66665f", gap: 8 }}><Loader2 size={14} className="spin" /> Order {order.id}: waiting for payment</div>}
+          {order && !paid && <div className="row-start small muted" style={{ gap: 8 }}><Loader2 size={14} className="spin" /> Order {order.id}: waiting for payment</div>}
           {error && <div className="error small">{error}</div>}
 
-          <div style={{ display: "grid", gap: 10, fontSize: 13, color: "#44443f", borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 18 }}>
-            <span className="row-start" style={{ gap: 8 }}><Package size={15} /> Any coin on any chain; we receive dollars</span>
-            <span className="row-start" style={{ gap: 8 }}><Bot size={15} /> Agents: <code className="mono">GET /api/shop/forecast</code> is paid per call (x402)</span>
+          <div className="small soft" style={{ display: "grid", gap: 10, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
+            <span className="row-start" style={{ gap: 8 }}><Package size={15} /> Pay with any coin on any chain; the shop receives dollars</span>
+            <span className="row-start" style={{ gap: 8 }}><Bot size={15} /> For agents: <code className="mono">GET /api/shop/forecast</code> costs $0.10 per call (x402)</span>
           </div>
         </div>
       </main>

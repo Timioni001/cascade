@@ -184,6 +184,18 @@ export interface Store {
   getWebhook(id: string): Promise<WebhookDelivery | null>;
   listDueWebhooks(nowIso: string): Promise<WebhookDelivery[]>;
   listWebhooks(merchantId: string): Promise<WebhookDelivery[]>;
+
+  /**
+   * Claims `key` until `now + ttlMs`. Resolves false if it is already claimed
+   * and the claim has not expired. Used for one-time nonces and short leases
+   * (one settler tick at a time), so it must be atomic.
+   */
+  claimOnce(key: string, ttlMs: number, now: number): Promise<boolean>;
+  /**
+   * Fixed-window counter for rate limits: adds `add` (default 1) to `key`'s
+   * count in the window of `windowMs` containing `now`, and returns the count.
+   */
+  hit(key: string, windowMs: number, now: number, add?: number): Promise<number>;
 }
 
 const TERMINAL = new Set<ExecutionStatus>(["SUCCESS", "REFUNDED", "FAILED"]);

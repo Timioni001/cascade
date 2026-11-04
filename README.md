@@ -2,7 +2,7 @@
 
 Checkout for NEAR Intents: let anyone pay you with any coin on any chain, and receive exactly the US dollars you asked for (USDC on NEAR), in your own account or your team's DAO. People pay through a button; AI agents pay through HTTP 402.
 
-A print shop in Lagos sells a $25 poster to a customer in Berlin who holds ETH on Base. Card processors are slow and expensive to reach from Nigeria; plain crypto means telling the customer which coin, which chain and which address, and then checking a block explorer by hand. With Cascade the shop adds one button. The customer picks the coin they already have and pays from their wallet (or scans a QR code); the shop receives exactly $25.00 in USDC on NEAR, an on-chain receipt anyone can verify, and a signed webhook that tells its server to ship. Sales can be split automatically with collaborators or a DAO, refunds go back in the customer's own coin, and an AI agent can buy from the shop's API the same way. Cascade never holds the shop's money: NEAR Intents delivers it straight to the shop's account, its DAO, or an on-chain split. The same rails let a freelancer invoice a client and a team run payroll after its DAO approves, with no network fees for anyone.
+A small ceramics studio sells a $25 mug to a customer abroad who holds ETH on Base. Card processing is slow and expensive to set up in much of the world; plain crypto means telling the customer which coin, which chain and which address, and then checking a block explorer by hand. With Cascade the shop adds one button. The customer picks the coin they already have and pays from their wallet (or scans a QR code); the shop receives exactly $25.00 in USDC on NEAR, an on-chain receipt anyone can verify, and a signed webhook that tells its server to ship. Sales can be split automatically with collaborators or a DAO, refunds go back in the customer's own coin, and an AI agent can buy from the shop's API the same way. Cascade never holds the shop's money: NEAR Intents delivers it straight to the shop's account, its DAO, or an on-chain split. The same rails let a freelancer invoice a client and a team run payroll after its DAO approves, with no network fees for anyone.
 
 > **Status (2026-11-03):** everything below runs locally against a real NEAR node (the sandbox) and is tested. Deployment plan: all contracts live on **NEAR testnet** with a public demo (the cross-chain swap is simulated there, because NEAR Intents has no testnet), plus a small **mainnet proof** of real 1Click payments (about $3). Deploying the contracts to mainnet would lock ~15-20 NEAR of storage, over this project's hackathon budget. Scripts and steps: [runbook](docs/mainnet-runbook.md). Links will appear under [Proof](#proof).
 
@@ -12,7 +12,7 @@ A print shop in Lagos sells a $25 poster to a customer in Berlin who holds ETH o
 // Your server (the secret key never leaves it)
 import { Cascade } from "@cascade/sdk/server";
 const cascade = new Cascade({ apiKey: process.env.CASCADE_SECRET_KEY! });
-const session = await cascade.checkout.create({ amount: "25.00", description: "A2 poster", reference: order.id }, { idempotencyKey: order.id });
+const session = await cascade.checkout.create({ amount: "25.00", description: "Stoneware mug", reference: order.id }, { idempotencyKey: order.id });
 
 // Your page: a "Pay with any crypto" modal
 import { openCheckout } from "@cascade/sdk/browser";
@@ -48,11 +48,12 @@ Requirements: Node 22.13+, pnpm 10, internet access for the first run (downloads
 pnpm i
 pnpm demo     # every story end to end in the terminal, 24 checks, ~50 s
 pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
+pnpm worker:local   # the same, running inside the real Cloudflare Worker runtime with D1, on :8787
 ```
 
 ### `pnpm dev`: click through it
 
-1. Open http://localhost:3000/shop. You see the demo shop, "Lagos Prints", already onboarded as a merchant on the local chain.
+1. Open http://localhost:3000/shop. You see the demo shop, "Oakline Ceramics", already onboarded as a merchant on the local chain.
 2. Press **Pay with any crypto**. The Cascade checkout opens in a modal (an iframe on the Cascade origin).
 3. Pick **ETH on Base**. You see the exact ETH amount for $25.00 from a (mock) quote, and that the price includes a 0.3% fee while the shop receives exactly $25.00.
 4. Paste any address as your refund address and press **Get payment address**. You see a one-time deposit address and a QR code your phone wallet can scan. With a browser wallet such as MetaMask installed, **Pay with wallet** sends the transaction instead.
@@ -67,7 +68,7 @@ pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 2. **Ada invoices** a client for $300; **the client pays in ETH on Base**; the settler marks the invoice Paid on-chain. Someone pays her **public link** with SOL; it is recorded as a receipt.
 3. **Ada splits** $200 to Solana, Base (private) and NEAR in one batch with one signature.
 4. **Her studio is a Sputnik DAO** (the real v2 contract from mainnet). It joins Cascade through its own proposal, receives $1,500 from Arbitrum, and runs payroll on three chains after 2 of 3 approvals. A preparer cannot fund it alone; a frozen recipient's $100 goes back to the DAO automatically.
-5. **A print shop onboards to Checkout** with a signed NEP-413 message, creates a session with the SDK, a customer pays in ETH on Base, the shop receives exactly $25.00, a receipt bound to the session is written on-chain, and the shop's server verifies the webhook (and rejects a forged one).
+5. **A ceramics studio onboards to Checkout** with a signed NEP-413 message, creates a session with the SDK, a customer pays in ETH on Base, the shop receives exactly $25.00, a receipt bound to the session is written on-chain, and the shop's server verifies the webhook (and rejects a forged one).
 6. **Revenue split:** the shop's next sale is split 80/15/5 between the shop, an illustrator and the studio DAO, on arrival, with no signatures: $20.00 / $3.75 / $1.25.
 7. **Refund:** $10 goes back to the first customer as ETH on Base; the shop signs twice (create, fund) and receives `refund.succeeded`.
 8. **AI agent:** an agent pays the shop's API over x402 and gets its data; replaying the same payment is refused.
@@ -85,11 +86,12 @@ pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
 ## Tests
 
 ```sh
-pnpm test:unit       # 68 TypeScript unit tests (seconds)
+pnpm test:unit       # 77 TypeScript unit tests (seconds)
 pnpm test:sandbox    # 25 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
 pnpm test            # both
 pnpm test:contracts  # 26 Rust unit tests (needs Rust)
-pnpm test:e2e        # optional browser test: button, QR, receipt, dashboard (needs Playwright; run pnpm dev first)
+pnpm test:e2e        # optional browser test: button, QR, receipt, dashboard (needs Playwright; run pnpm dev first;
+                     # CASCADE_WEB=http://localhost:8787 to test the Worker from pnpm worker:local)
 ```
 
 Each safety rule has a test at the contract level (`contracts/app/src/tests.rs`) and on a real node (`contracts/tests/safety.test.ts`):
@@ -131,7 +133,8 @@ Each safety rule has a test at the contract level (`contracts/app/src/tests.rs`)
 | `@cascade/sdk`: server client, webhooks, Pay button, EVM wallet payments, QR payment URIs, x402 guard and client | Done, tested; no runtime dependencies |
 | Web: landing page, hosted checkout (steps, fee shown upfront, QR, wallet pay), paper receipt with live checks, merchant dashboard (balance, revenue chart, payments, refunds, webhooks, CSV), demo shop, x402 demo API | Done, browser-tested at desktop and phone widths |
 | Testnet demo mode (`CASCADE_ONECLICK=mock`) and demo-merchant setup script | Done; refused on mainnet (tested) |
-| One-process backend, Dockerfile, Vercel guide | Done; server boot and install path tested ([hosting](docs/hosting.md)) |
+| Cloudflare: one Worker (pages, API, relayer, demo shop) on D1 with a cron settler, free plan | Done; browser e2e, x402 agent and cron run against the Worker locally (`pnpm worker:local`) ([hosting](docs/hosting.md)) |
+| Node server alternative (same platform code), Dockerfile | Done; browser e2e against it (`pnpm dev:static`) |
 | Deploy and mainnet test scripts | Done; deploy rehearsed on a local node ([runbook](docs/mainnet-runbook.md)) |
 | Solana (Phantom) and NEAR wallet buttons | Not yet: those payers use the QR code or the deposit address |
 | AI assistant on NEAR AI Cloud | Cut |
@@ -153,15 +156,16 @@ Our servers can delay things and the settler can wrongly mark an invoice paid, b
 
 `pnpm deploy:cascade` and `pnpm spike <name>` run from your machine with keys in `.env`; every transaction is shown and needs a typed `yes`. The app contract is deployed **locked** (no access keys), so nobody can change it or move its funds. Step by step: [docs/mainnet-runbook.md](docs/mainnet-runbook.md). The deploy script itself is tested against a local node (`contracts/tests/deploy.test.ts`).
 
-## Running the backend
+## Hosting
 
-After deploying, one process serves everything: the checkout API (`/v1`), the relayer (`/relayer`) and the settler loop. Contract ids come from `deployments/<network>.json`, secrets from `.env`.
+One deployment serves everything: the pages, the checkout API (`/v1`), the relayer (`/relayer`), the demo shop and the settler. On **Cloudflare** it is one Worker with D1 and a cron trigger, on the free plan; nothing needs to stay up on your machine. The same platform code also runs as one Node process (`pnpm backend`, or Docker). Contract ids come from `deployments/<network>.json`, secrets from `.env`.
 
 ```sh
-pnpm backend              # or: docker compose up -d
+pnpm cf:configure --url https://cascade.<you>.workers.dev --database-id <id>
+pnpm cf:deploy
 ```
 
-Hosting the backend (Docker) and the web app (Vercel): [docs/hosting.md](docs/hosting.md).
+Step by step, limits and settings: [docs/hosting.md](docs/hosting.md).
 
 ## Documentation
 

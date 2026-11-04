@@ -1,5 +1,5 @@
 /**
- * pnpm agent      (with `pnpm dev` running)
+ * pnpm agent      (with `pnpm dev` running; SHOP_URL=http://localhost:8787 for `pnpm worker:local`)
  *
  * An "AI agent" buys one forecast from the demo shop's paid API using x402:
  * GET -> 402 with payment options -> the agent pays one (here the sandbox
@@ -9,7 +9,8 @@
 import { decodeHeader, fetchWithPayment, X402_HEADERS, type X402Settlement } from "@cascade/sdk";
 
 const SHOP = process.env.SHOP_URL ?? "http://localhost:3000";
-const API = process.env.CASCADE_API ?? "http://127.0.0.1:8788";
+// One deployment serves the shop and the API.
+const API = process.env.CASCADE_API ?? SHOP;
 
 console.log(`agent: GET ${SHOP}/api/shop/forecast`);
 const res = await fetchWithPayment(`${SHOP}/api/shop/forecast`, {}, {

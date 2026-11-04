@@ -83,7 +83,7 @@ beforeEach(() => {
 const call = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
   api.request(path, { method, headers: { "content-type": "application/json", ...headers }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
 
-async function onboard(account = "shop.near", name = "Lagos Prints", signer = account) {
+async function onboard(account = "shop.near", name = "Oakline Ceramics", signer = account) {
   const r = await call("POST", "/v1/merchants", { account, name, webhookUrl: "https://shop.example/hooks", proof: proof(account, name, signer) });
   return { status: r.status, body: (await r.json()) as { secretKey: string; webhookSecret: string; error?: { message: string } } };
 }
@@ -95,7 +95,7 @@ describe("onboarding", () => {
     expect(body.secretKey).toMatch(/^sk_test_[A-Za-z0-9]{24}$/);
     expect(JSON.stringify(await store.getApiKey("nope"))).toBe("null");
     const me = await call("GET", "/v1/merchant", undefined, { authorization: `Bearer ${body.secretKey}` });
-    expect(await me.json()).toMatchObject({ account: "shop.near", name: "Lagos Prints" });
+    expect(await me.json()).toMatchObject({ account: "shop.near", name: "Oakline Ceramics" });
   });
 
   it("a DAO's preparer can onboard the DAO; a stranger cannot", async () => {
@@ -105,19 +105,19 @@ describe("onboarding", () => {
 
   it("refuses unregistered owners, bad signatures, stale proofs, replays and duplicates", async () => {
     expect((await onboard("nobody.near")).status).toBe(400);
-    const bad = proof("shop.near", "Lagos Prints");
+    const bad = proof("shop.near", "Oakline Ceramics");
     bad.signature = Buffer.from("something else").toString("base64");
-    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Lagos Prints", proof: bad })).status).toBe(401);
-    const stale = proof("shop.near", "Lagos Prints", "shop.near", new Date(now - 11 * 60_000).toISOString());
-    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Lagos Prints", proof: stale })).status).toBe(400);
-    const p = proof("shop.near", "Lagos Prints");
-    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Lagos Prints", proof: p })).status).toBe(201);
-    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Lagos Prints", proof: p })).status).toBe(400); // replay
+    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Oakline Ceramics", proof: bad })).status).toBe(401);
+    const stale = proof("shop.near", "Oakline Ceramics", "shop.near", new Date(now - 11 * 60_000).toISOString());
+    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Oakline Ceramics", proof: stale })).status).toBe(400);
+    const p = proof("shop.near", "Oakline Ceramics");
+    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Oakline Ceramics", proof: p })).status).toBe(201);
+    expect((await call("POST", "/v1/merchants", { account: "shop.near", name: "Oakline Ceramics", proof: p })).status).toBe(400); // replay
     expect((await onboard()).status).toBe(409);
   });
 
   it("rejects plain-http webhook URLs except localhost", async () => {
-    const r = await call("POST", "/v1/merchants", { account: "shop.near", name: "Lagos Prints", webhookUrl: "http://evil.example/x", proof: proof("shop.near", "Lagos Prints") });
+    const r = await call("POST", "/v1/merchants", { account: "shop.near", name: "Oakline Ceramics", webhookUrl: "http://evil.example/x", proof: proof("shop.near", "Oakline Ceramics") });
     expect(r.status).toBe(400);
   });
 });
@@ -155,11 +155,11 @@ describe("sessions", () => {
     expect(s.url).toBe(`https://cascade.link/c/${s.id}`);
 
     const pub = (await (await call("GET", `/v1/public/sessions/${s.id}`)).json()) as CheckoutSession;
-    expect(pub).toMatchObject({ status: "open", amountFormatted: "25.00", merchant: { name: "Lagos Prints" } });
+    expect(pub).toMatchObject({ status: "open", amountFormatted: "25.00", merchant: { name: "Oakline Ceramics" } });
 
     const prev = (await (await call("POST", `/v1/public/sessions/${s.id}/preview`, { assetId: ETH_BASE })).json()) as { amountOut: string; asset: { symbol: string } };
     expect(prev).toMatchObject({ amountOut: "25000000", asset: { symbol: "ETH" } });
-    expect(oneclick.depositAddresses()).toHaveLength(0); // preview reserves nothing
+    expect(await oneclick.depositAddresses()).toHaveLength(0); // preview reserves nothing
 
     const paying = (await (await call("POST", `/v1/public/sessions/${s.id}/pay`, { assetId: ETH_BASE, refundTo: "0x2527D02599Ba641c19FEa793cD0F167589a0f10D" })).json()) as CheckoutSession;
     expect(paying.payment).toMatchObject({ chain: "base", status: "PENDING_DEPOSIT" });

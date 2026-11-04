@@ -1,7 +1,21 @@
-# Cascade backend: checkout API + relayer + settler in one process (pnpm backend).
-# The web app (apps/web) deploys separately, e.g. on Vercel. See docs/hosting.md.
-FROM node:22.20-slim
+# Cascade on any container host: the platform (checkout API, relayer, demo
+# shop), the settler loop and the web app in one process (pnpm backend).
+# On Cloudflare use services/worker instead. See docs/hosting.md.
 
+# --- web app: static export
+FROM node:22.20-slim AS web
+ARG NEXT_PUBLIC_NEAR_NETWORK=testnet
+ARG NEXT_PUBLIC_SANDBOX=
+RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/web ./apps/web
+RUN pnpm install --frozen-lockfile --filter @cascade/web... \
+ && NEXT_PUBLIC_NEAR_NETWORK=$NEXT_PUBLIC_NEAR_NETWORK NEXT_PUBLIC_SANDBOX=$NEXT_PUBLIC_SANDBOX pnpm --filter @cascade/web build
+
+# --- server
+FROM node:22.20-slim
 ENV PNPM_HOME=/pnpm \
     NODE_OPTIONS=--no-warnings=ExperimentalWarning \
     CASCADE_DB=/data/cascade.sqlite \
@@ -16,6 +30,7 @@ COPY deployments ./deployments
 # Installs tsx too (a dev dependency of the root): the server runs TypeScript directly.
 RUN pnpm install --frozen-lockfile --filter @cascade/server... --filter cascade \
  && mkdir -p /data && chown -R node:node /data
+COPY --from=web /app/apps/web/out ./apps/web/out
 ENV NODE_ENV=production
 
 USER node

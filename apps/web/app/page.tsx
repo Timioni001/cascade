@@ -23,7 +23,7 @@ const cascade = new Cascade({ apiKey: process.env.CASCADE_SECRET_KEY });
 
 const session = await cascade.checkout.create({
   amount: "25.00",
-  description: "A2 poster",
+  description: "Stoneware mug",
   reference: order.id,
 });
 // browser: openCheckout({ sessionUrl: session.url })
@@ -38,7 +38,7 @@ export default function Home() {
       <section className="container" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,0.9fr)", alignItems: "center", gap: 24, padding: "72px 24px 40px" }}>
         <div className="stack-lg rise">
           <span className="pill accent"><Coins size={14} /> Checkout for NEAR Intents</span>
-          <h1 className="display">Get paid in any coin.<br /><span style={{ color: "var(--accent)" }}>Receive dollars.</span></h1>
+          <h1 className="display">Get paid in any coin.<br /><span style={{ color: "var(--muted)" }}>Receive dollars.</span></h1>
           <p className="soft" style={{ fontSize: 18, maxWidth: 520, margin: "18px 0 0" }}>
             Your customers pay with whatever they hold, on any chain. You receive the exact amount in USDC on NEAR, in your own account. Cascade never holds your money.
           </p>
@@ -63,7 +63,7 @@ export default function Home() {
         <div className="grid-3" style={{ marginTop: 28 }}>
           {steps.map((s) => (
             <div key={s.n} className="card stack">
-              <div className="mono" style={{ color: "var(--accent)" }}>{s.n}</div>
+              <div className="mono muted">{s.n}</div>
               <div className="h2">{s.title}</div>
               <p className="soft small" style={{ margin: 0 }}>{s.body}</p>
             </div>
@@ -94,7 +94,7 @@ export default function Home() {
               <Link className="btn ghost sm" href="/dashboard">Merchant dashboard</Link>
             </div>
           </div>
-          <pre className="mono" style={{ margin: 0, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", padding: 20, whiteSpace: "pre-wrap", wordBreak: "normal", lineHeight: 1.7, color: "var(--ink-2)" }}>{code}</pre>
+          <pre className="mono" style={{ margin: 0, background: "var(--card-2)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", padding: 20, whiteSpace: "pre-wrap", wordBreak: "normal", lineHeight: 1.7, color: "var(--ink-2)" }}>{code}</pre>
         </div>
       </section>
 

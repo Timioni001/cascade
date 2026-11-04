@@ -11,7 +11,14 @@ export const metadata: Metadata = {
   description: "Checkout for NEAR Intents. Customers pay with any coin on any chain; you receive exact USDC on NEAR.",
 };
 
-export const viewport: Viewport = { themeColor: "#0a0a0b", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f6f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0c0d" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

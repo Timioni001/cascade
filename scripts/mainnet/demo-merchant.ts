@@ -1,13 +1,13 @@
 /**
- * pnpm demo-merchant --api https://<backend> --web https://<web> [--name lagos-prints] [--dry-run]
+ * pnpm demo-merchant --api https://<backend> --web https://<web> [--name oakline] [--dry-run]
  *
  * Sets up the demo shop on a deployed Cascade (testnet), the way a real
  * merchant would onboard:
  *   1. create <name>.<root> with the factory (the relayer pays)
  *   2. register it with Cascade, fee-free (NEP-366, signed by its limited key)
  *   3. onboard it to the hosted checkout API with a signed NEP-413 message
- * Prints the CASCADE_SECRET_KEY and CASCADE_WEBHOOK_SECRET to set on the web
- * app (Vercel). Keys are saved to .env, never printed whole.
+ * Saves the shop's keys to .env (DEMO_SHOP_*), never printed whole; then
+ * `pnpm cf:configure` hands them to the Worker as secrets.
  */
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -30,9 +30,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   try {
     const api = arg("api")?.replace(/\/$/, "");
     const web = arg("web")?.replace(/\/$/, "");
-    if (!api || !web) throw new Error("usage: pnpm demo-merchant --api https://<backend> --web https://<web> [--name lagos-prints]");
+    if (!api || !web) throw new Error("usage: pnpm demo-merchant --api https://<backend> --web https://<web> [--name oakline]");
     if (!cfg.relayer.key) throw new Error("RELAYER_PRIVATE_KEY is required (deploy first)");
-    const name = arg("name") ?? "lagos-prints";
+    const name = arg("name") ?? "oakline";
     const id = `${name}.${cfg.root.id}`;
     const chain = new Chain(cfg.rpc, cfg.network);
     const relayer = chain.account(cfg.relayer.id, cfg.relayer.key);
@@ -78,7 +78,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     }
     const issuedAt = new Date().toISOString();
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const shopName = "Lagos Prints";
+    const shopName = "Oakline Ceramics";
     const signed = await chain.account(id, full).signNep413Message({ message: onboardingMessage({ account: id, name: shopName, issuedAt }), recipient: ONBOARDING_RECIPIENT, nonce });
     const res = await fetch(`${api}/v1/merchants`, {
       method: "POST",
@@ -92,9 +92,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     if (res.status !== 201 || !j.secretKey || !j.webhookSecret) throw new Error(`onboarding failed (${res.status}): ${j.error?.message}`);
     saveKeyToEnv("DEMO_SHOP_SECRET_KEY", j.secretKey);
     saveKeyToEnv("DEMO_SHOP_WEBHOOK_SECRET", j.webhookSecret);
-    io.step("Done. Set these on the web app (Vercel), then redeploy it:");
-    io.log("CASCADE_SECRET_KEY      = the value of DEMO_SHOP_SECRET_KEY in your .env");
-    io.log("CASCADE_WEBHOOK_SECRET  = the value of DEMO_SHOP_WEBHOOK_SECRET in your .env");
+    io.step("Done. Hand the keys to the deployment:");
+    io.log(`Cloudflare: pnpm cf:configure --url ${api}, then wrangler secret bulk (docs/hosting.md)`);
+    io.log("Node server: set CASCADE_SHOP_SECRET_KEY / CASCADE_SHOP_WEBHOOK_SECRET from DEMO_SHOP_* in .env and restart");
     io.log(`Dashboard: ${web}/dashboard (paste the secret key)`);
   } catch (e) {
     io.warn((e as Error).message);

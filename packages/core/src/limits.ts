@@ -1,18 +1,26 @@
 /**
- * Fixed-window counters keyed by an arbitrary string ("acct:ada", "ip:1.2.3.4").
- * In-memory: good for one relayer process. Swap for Redis if we run several.
+ * Rate limits: fixed-window counters keyed by an arbitrary string
+ * ("acct:ada", "ip:1.2.3.4"). `RateLimiter` keeps them in memory (one
+ * process); `@cascade/db`'s `StoreLimiter` keeps them in the database, which
+ * is what a serverless deployment (many short-lived isolates) needs.
  */
 export interface LimitRule {
   max: number;
   windowMs: number;
 }
 
-export class RateLimiter {
+export interface Limiter {
+  /** Records a hit and resolves true if it is within `rule`. */
+  take(key: string, rule: LimitRule): Promise<boolean>;
+  /** Checks without recording. */
+  peek(key: string, rule: LimitRule): Promise<boolean>;
+}
+
+export class RateLimiter implements Limiter {
   private readonly hits = new Map<string, { start: number; count: number }>();
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** Records a hit and returns true if it is within `rule`. */
-  take(key: string, rule: LimitRule): boolean {
+  async take(key: string, rule: LimitRule): Promise<boolean> {
     const t = this.now();
     const h = this.hits.get(key);
     if (!h || t - h.start >= rule.windowMs) {
@@ -24,8 +32,7 @@ export class RateLimiter {
     return true;
   }
 
-  /** Check without recording. */
-  peek(key: string, rule: LimitRule): boolean {
+  async peek(key: string, rule: LimitRule): Promise<boolean> {
     const h = this.hits.get(key);
     return !h || this.now() - h.start >= rule.windowMs || h.count < rule.max;
   }

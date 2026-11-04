@@ -1,6 +1,6 @@
 /**
  * The two Cascade stories, end to end on a sandbox `World`:
- *   personalFlow - Ada, a designer in Lagos, gets paid from Base and splits it.
+ *   personalFlow - Ada, a freelance designer, gets paid from Base and splits it.
  *   teamFlow     - Ada's studio (a Sputnik DAO) runs payroll after 2 of 3 approve.
  * `pnpm demo` narrates them; contracts/tests asserts on what they return.
  */

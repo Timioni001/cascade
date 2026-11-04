@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
-import { RateLimiter, HOUR } from "@cascade/core";
+import { RateLimiter, HOUR, type Limiter } from "@cascade/core";
 import { AgentPayments, CheckoutError, Refunds, type Checkout, type OnboardingProof } from "@cascade/engine";
 import { ledgerRows, toCsv } from "@cascade/db";
 import type { X402PaymentPayload } from "@cascade/sdk";
@@ -13,7 +13,9 @@ export interface ApiOptions {
   trustProxy?: boolean;
   /** Sandbox only: enables POST /v1/dev/... routes that fake a payer's deposit. */
   dev?: { oneclick: MockOneClick };
-  limiter?: RateLimiter;
+  limiter?: Limiter;
+  /** A header the platform sets to the client IP ("cf-connecting-ip" on Cloudflare). Checked before x-forwarded-for. */
+  ipHeader?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -29,7 +31,7 @@ export function apiApp(o: ApiOptions) {
   const refunds = o.refunds ?? new Refunds(c);
   const agents = o.agents ?? new AgentPayments(c);
   const limiter = o.limiter ?? new RateLimiter();
-  const ip = (ctx: Context) => (o.trustProxy ? ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined) ?? ctx.req.header("x-real-ip") ?? "local";
+  const ip = (ctx: Context) => (o.ipHeader ? ctx.req.header(o.ipHeader) : undefined) ?? (o.trustProxy ? ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined) ?? ctx.req.header("x-real-ip") ?? "local";
   const body = async (ctx: Context): Promise<Json> => {
     const j = await ctx.req.json().catch(() => null);
     if (!j || typeof j !== "object") throw new CheckoutError(400, "body must be a JSON object");
@@ -54,7 +56,7 @@ export function apiApp(o: ApiOptions) {
 
   // ------------------------------------------------------------ onboarding (public, signed)
   app.post("/v1/merchants", async (ctx) => {
-    if (!limiter.take(`onboard:${ip(ctx)}`, { max: 10, windowMs: HOUR })) throw new CheckoutError(429, "too many attempts");
+    if (!(await limiter.take(`onboard:${ip(ctx)}`, { max: 10, windowMs: HOUR }))) throw new CheckoutError(429, "too many attempts");
     const b = await body(ctx);
     const proof = b.proof as OnboardingProof | undefined;
     if (!proof || typeof proof !== "object") throw new CheckoutError(400, "proof is required");
@@ -107,7 +109,7 @@ export function apiApp(o: ApiOptions) {
   });
   merchant.post("/checkout/sessions", async (ctx) => {
     const m = me(ctx);
-    if (!limiter.take(`sessions:${m.id}`, { max: 1000, windowMs: HOUR })) throw new CheckoutError(429, "session rate limit");
+    if (!(await limiter.take(`sessions:${m.id}`, { max: 1000, windowMs: HOUR }))) throw new CheckoutError(429, "session rate limit");
     const b = await body(ctx);
     const s = await c.createSession(
       m,
@@ -190,7 +192,7 @@ export function apiApp(o: ApiOptions) {
   const pub = new Hono();
   pub.use("*", cors({ origin: "*", allowMethods: ["GET", "POST"], allowHeaders: ["content-type"] }));
   pub.use("*", async (ctx, next) => {
-    if (!limiter.take(`public:${ip(ctx)}`, { max: 600, windowMs: HOUR })) throw new CheckoutError(429, "too many requests");
+    if (!(await limiter.take(`public:${ip(ctx)}`, { max: 600, windowMs: HOUR }))) throw new CheckoutError(429, "too many requests");
     await next();
   });
   pub.get("/assets", async (ctx) => ctx.json({ data: await c.assets() }));

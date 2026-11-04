@@ -28,9 +28,10 @@ Most of the code was written by Claude Code (Anthropic) working with the team le
 | borsh | 2.0.0 | Decoding signed delegate actions |
 | @noble/hashes | 2.2.0 | SHA-256 for line and invoice hashes |
 | near-sandbox | 0.3.4 | Local NEAR node for demo and tests |
-| hono, @hono/node-server | 4.12.34, 2.1.5 | Relayer and checkout API servers |
-| next, react, react-dom | 15.5.28, 19.1.10 | Hosted checkout page and demo shop |
+| hono, @hono/node-server | 4.12.34, 2.1.5 | HTTP routing for the platform (Worker and Node server) |
+| next, react, react-dom | 15.5.28, 19.1.10 | Web app (static export): checkout, receipts, dashboard, demo shop |
 | qrcode | 1.5.4 | QR codes for wallet payment links |
+| wrangler (Cloudflare) | 4.151.2 | Builds, runs locally and deploys the Worker (D1, cron) |
 | lucide-react | 1.59.0 | Icons |
 | Geist, Geist Mono (via next/font) | | Typeface |
 | vitest, tsx, typescript | 4.1.12, 4.23.15, 5.9.3 | Tests and tooling |

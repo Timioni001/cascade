@@ -72,6 +72,12 @@ export interface World {
   freeze: (account: string) => Promise<void>;
   /** Run settler passes until nothing happens (or `max`). */
   settle: (max?: number) => Promise<import("@cascade/settler").SettlerEvent[]>;
+  /**
+   * Environment for the real platform (services/platform: Node server or
+   * Cloudflare Worker) pointed at this sandbox, in testnet demo mode with the
+   * solver as the mock USDC minter.
+   */
+  platformEnv: (publicUrl: string) => Record<string, string>;
   stop: () => Promise<void>;
 }
 
@@ -186,6 +192,14 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
     usdcBalance,
     nearBalance: (a) => chain.nearBalance(a),
     signUp, plainAccount, createDao, settle,
+    platformEnv: (publicUrl) => ({
+      NEAR_NETWORK: "testnet", NEAR_RPC_URL: sandbox.rpcUrl, CASCADE_PUBLIC_URL: publicUrl,
+      CASCADE_APP_ID: ids.app, CASCADE_FACTORY_ID: ids.factory, USDC_CONTRACT_ID: ids.usdc, SPUTNIK_FACTORY_ID: ids.daoFactory,
+      RELAYER_ACCOUNT_ID: ids.relayer, RELAYER_PRIVATE_KEY: keys.get(ids.relayer)!.toString(),
+      SETTLER_ACCOUNT_ID: ids.settler, SETTLER_PRIVATE_KEY: keys.get(ids.settler)!.toString(),
+      CASCADE_ONECLICK: "mock", CASCADE_ROOT_ID: ids.solver, CASCADE_ROOT_PRIVATE_KEY: keys.get(ids.solver)!.toString(),
+      CASCADE_FEE_BPS: "30", CASCADE_FEE_RECIPIENT: ids.factory,
+    }),
     freeze: async (a) => {
       expectOk(await chain.send(solver, ftCalls(ids.usdc).setBlocked(a, true)), "freeze");
     },

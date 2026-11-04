@@ -8,7 +8,7 @@ export function PaymentQr({ uri, label, size = 184 }: { uri: string; label: stri
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    QRCode.toDataURL(uri, { margin: 0, width: size * 2, errorCorrectionLevel: "M", color: { dark: "#151515", light: "#f7f6f1" } }).then((d) => live && setSrc(d), () => live && setSrc(null));
+    QRCode.toDataURL(uri, { margin: 0, width: size * 2, errorCorrectionLevel: "M", color: { dark: "#111112", light: "#ffffff" } }).then((d) => live && setSrc(d), () => live && setSrc(null));
     return () => {
       live = false;
     };

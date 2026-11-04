@@ -1,5 +1,5 @@
-/** Browser-side calls to the public Cascade API. */
-export const API = process.env.NEXT_PUBLIC_CASCADE_API ?? "http://127.0.0.1:8788";
+/** Browser-side calls to the public Cascade API: same origin by default (one deployment serves the site and the API). */
+export const API = (process.env.NEXT_PUBLIC_CASCADE_API ?? "").replace(/\/$/, "");
 export const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK ?? "sandbox";
 
 export async function publicApi<T>(path: string, body?: unknown): Promise<T> {
@@ -13,4 +13,10 @@ export async function publicApi<T>(path: string, body?: unknown): Promise<T> {
 export function nearTxUrl(hash: string | null | undefined): string | null {
   if (!hash || NETWORK === "sandbox") return null;
   return NETWORK === "mainnet" ? `https://nearblocks.io/txns/${hash}` : `https://testnet.nearblocks.io/txns/${hash}`;
+}
+
+/** The last path segment of the current URL: the id in /c/<id> and /r/<id> (the pages are static shells). */
+export function routeId(): string {
+  if (typeof window === "undefined") return "";
+  return decodeURIComponent(window.location.pathname.replace(/\/$/, "").split("/").pop() ?? "");
 }

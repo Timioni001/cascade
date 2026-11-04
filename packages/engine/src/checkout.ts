@@ -100,7 +100,6 @@ export type RefundRoute = { refundTo: string; type: "ORIGIN_CHAIN" | "INTENTS" }
 export class Checkout {
   readonly reader: CascadeReader;
   private readonly now: () => number;
-  private readonly usedNonces = new Set<string>();
   private assetsCache: { at: number; assets: PayAsset[] } | null = null;
 
   constructor(readonly cfg: CheckoutConfig) {
@@ -143,7 +142,6 @@ export class Checkout {
     const issued = Date.parse(p.proof.issuedAt);
     if (!Number.isFinite(issued) || Math.abs(this.now() - issued) > 10 * 60_000) throw new CheckoutError(400, "proof is expired or from the future");
     if (Buffer.from(p.proof.nonce, "base64").length !== 32) throw new CheckoutError(400, "nonce must be 32 bytes");
-    if (this.usedNonces.has(p.proof.nonce)) throw new CheckoutError(400, "proof already used");
 
     const owner = await this.reader.owner(p.account);
     if (!owner) throw new CheckoutError(400, `${p.account} is not registered with Cascade`);
@@ -152,7 +150,8 @@ export class Checkout {
     if (!(await this.verify(p.proof, onboardingMessage({ account: p.account, name, issuedAt: p.proof.issuedAt })))) {
       throw new CheckoutError(401, "signature does not verify for that account and key");
     }
-    this.usedNonces.add(p.proof.nonce);
+    // Atomic in the store, so a replay is refused even on another instance.
+    if (!(await this.cfg.store.claimOnce(`nep413:${p.proof.nonce}`, 20 * 60_000, this.now()))) throw new CheckoutError(400, "proof already used");
     if (await this.cfg.store.findMerchantByAccount(p.account)) throw new CheckoutError(409, "this account is already a merchant");
 
     const merchant: Merchant = {

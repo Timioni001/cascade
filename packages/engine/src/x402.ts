@@ -28,9 +28,6 @@ export interface PrepareParams {
 }
 
 export class AgentPayments {
-  private readonly settling = new Set<string>();
-  private readonly nudged = new Set<string>();
-
   constructor(private readonly c: Checkout) {}
 
   private now() {
@@ -95,23 +92,17 @@ export class AgentPayments {
 
     if (s.status !== "paid") {
       const key = `${pl.accepted.payTo}:${txHash}`;
-      if (!this.nudged.has(key)) {
-        this.nudged.add(key);
+      if (await this.c.cfg.store.claimOnce(`x402-nudge:${key}`, 60 * 60_000, this.now())) {
         await this.c.cfg.oneclick.submitDeposit({ depositAddress: pl.accepted.payTo, txHash }).catch(() => undefined);
       }
       return fail("payment_pending", network);
     }
 
     // Paid: hand out exactly one success for this session.
-    if (this.settling.has(s.id)) return fail("already_used", network);
-    this.settling.add(s.id);
-    try {
-      const fresh = await this.c.getSession(s.id);
-      if (fresh.consumedAt) return fail("already_used", network);
-      await this.c.cfg.store.putSession({ ...fresh, consumedAt: new Date(this.now()).toISOString() });
-      return { success: true, transaction: fresh.nearTx ?? "", network: `near:${this.c.cfg.chain.networkId}` };
-    } finally {
-      this.settling.delete(s.id);
-    }
+    // The claim is atomic in the store, so two instances cannot both succeed.
+    if (!(await this.c.cfg.store.claimOnce(`x402-used:${s.id}`, 365 * 24 * 3_600_000, this.now()))) return fail("already_used", network);
+    const fresh = await this.c.getSession(s.id);
+    await this.c.cfg.store.putSession({ ...fresh, consumedAt: new Date(this.now()).toISOString() });
+    return { success: true, transaction: fresh.nearTx ?? "", network: `near:${this.c.cfg.chain.networkId}` };
   }
 }

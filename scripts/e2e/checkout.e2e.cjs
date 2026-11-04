@@ -12,6 +12,7 @@
  */
 const { chromium } = require("playwright");
 const out = process.argv[2] || ".";
+const BASE = (process.env.CASCADE_WEB ?? "http://localhost:3000").replace(/\/$/, "");
 const assert = (c, m) => {
   if (!c) throw new Error(m);
 };
@@ -26,13 +27,13 @@ const assert = (c, m) => {
   };
 
   const home = await page(1280, 820);
-  await home.goto("http://localhost:3000/");
+  await home.goto(`${BASE}/`);
   await home.waitForSelector("text=Receive dollars.");
   await home.waitForTimeout(800);
   await home.screenshot({ path: `${out}/1-landing.png` });
 
   const p = await page(1280, 900);
-  await p.goto("http://localhost:3000/shop");
+  await p.goto(`${BASE}/shop`);
   await p.screenshot({ path: `${out}/2-shop.png` });
   await p.click("text=Pay with any crypto");
   const frame = await (await p.waitForSelector("iframe[title='Cascade checkout']")).contentFrame();
@@ -63,19 +64,19 @@ const assert = (c, m) => {
 
   // The public receipt recomputes its checks from the chain and 1Click.
   const r = await page(720, 1100);
-  await r.goto(`http://localhost:3000${receiptHref}`);
+  await r.goto(`${BASE}${receiptHref}`);
   await r.waitForSelector("text=Bound to this exact order");
-  const passed = await r.evaluate(() => [...document.querySelectorAll("span")].filter((s) => getComputedStyle(s).backgroundColor === "rgb(31, 122, 74)").length);
+  const passed = await r.evaluate(() => document.querySelectorAll("[data-check=ok]").length);
   assert(passed === 4, `receipt shows ${passed}/4 checks passing`);
   await r.screenshot({ path: `${out}/7-receipt.png` });
 
   const key = process.env.CASCADE_DASHBOARD_KEY;
   if (key) {
     const d = await page(1360, 900);
-    await d.goto("http://localhost:3000/dashboard");
+    await d.goto(`${BASE}/dashboard`);
     await d.fill("input[type=password]", key);
     await d.click("text=Open dashboard");
-    await d.waitForSelector("text=Lagos Prints");
+    await d.waitForSelector("text=Oakline Ceramics");
     await d.waitForSelector("text=Recent payments");
     await d.waitForTimeout(600);
     await d.screenshot({ path: `${out}/8-dashboard.png` });
@@ -88,7 +89,7 @@ const assert = (c, m) => {
   }
 
   const m = await page(390, 844);
-  await m.goto(`http://localhost:3000${receiptHref.replace("/r/", "/c/")}`);
+  await m.goto(`${BASE}${receiptHref.replace("/r/", "/c/")}`);
   await m.waitForSelector("text=Payment complete");
   await m.screenshot({ path: `${out}/10-mobile-checkout.png` });
 

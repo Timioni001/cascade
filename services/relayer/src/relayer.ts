@@ -4,7 +4,7 @@ import {
 } from "@cascade/near";
 import type { Account } from "near-api-js";
 import { checkDelegate, type RelayPolicyConfig } from "./policy.js";
-import { DEFAULT_LIMITS, RateLimiter, type LimitRule } from "@cascade/core";
+import { DEFAULT_LIMITS, RateLimiter, type LimitRule, type Limiter } from "@cascade/core";
 
 export interface RelayerDeps {
   chain: Chain;
@@ -16,7 +16,7 @@ export interface RelayerDeps {
   /** Sputnik DAO factory, e.g. sputnik-dao.near */
   daoFactory: string;
   limits?: Partial<typeof DEFAULT_LIMITS>;
-  limiter?: RateLimiter;
+  limiter?: Limiter;
   /** Optional human check for sign-ups (e.g. Cloudflare Turnstile). */
   verifyHuman?: (token: string | undefined, ip: string) => Promise<boolean>;
 }
@@ -42,7 +42,7 @@ export interface RelayContext {
  */
 export class Relayer {
   private readonly limits: typeof DEFAULT_LIMITS;
-  private readonly limiter: RateLimiter;
+  private readonly limiter: Limiter;
   private readonly policy: RelayPolicyConfig;
   private readonly reader: CascadeReader;
   private readonly daoCache = new Map<string, boolean>();
@@ -69,8 +69,8 @@ export class Relayer {
     };
   }
 
-  private limit(key: string, rule: LimitRule, what: string) {
-    if (!this.limiter.take(key, rule)) throw new RelayError(429, `too many ${what}, try again later`);
+  private async limit(key: string, rule: LimitRule, what: string) {
+    if (!(await this.limiter.take(key, rule))) throw new RelayError(429, `too many ${what}, try again later`);
   }
 
   async relay(signedDelegateB64: string, ctx: RelayContext): Promise<TxResult> {
@@ -82,8 +82,8 @@ export class Relayer {
     }
     const v = await checkDelegate(decoded.summary, this.policy);
     if (!v.ok) throw new RelayError(403, v.reason);
-    this.limit(`ip:${ctx.ip}`, this.limits.relayPerIp, "requests from this address");
-    this.limit(`acct:${decoded.summary.senderId}`, this.limits.relayPerAccount, "requests for this account");
+    await this.limit(`ip:${ctx.ip}`, this.limits.relayPerIp, "requests from this address");
+    await this.limit(`acct:${decoded.summary.senderId}`, this.limits.relayPerAccount, "requests for this account");
     return this.d.chain.send(this.d.payer, relayCall(decoded.raw), { target: decoded.summary.receiverId });
   }
 
@@ -93,11 +93,11 @@ export class Relayer {
     if (!/^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(req.publicKey)) throw new RelayError(400, "bad public key");
     if (req.appKey && !/^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(req.appKey)) throw new RelayError(400, "bad app key");
     if (this.d.verifyHuman && !(await this.d.verifyHuman(ctx.humanToken, ctx.ip))) throw new RelayError(403, "human check failed");
-    if (!this.limiter.peek(`names:${ctx.ip}`, this.limits.namesPerIp)) throw new RelayError(429, "too many names from this address today");
+    if (!(await this.limiter.peek(`names:${ctx.ip}`, this.limits.namesPerIp))) throw new RelayError(429, "too many names from this address today");
     const accountId = `${name}.${this.d.factory}`;
     const exists = await this.d.chain.account(accountId).getState().then(() => true, () => false);
     if (exists) throw new RelayError(409, "that name is taken");
-    this.limit(`names:${ctx.ip}`, this.limits.namesPerIp, "names from this address today");
+    await this.limit(`names:${ctx.ip}`, this.limits.namesPerIp, "names from this address today");
     const r = await this.d.chain.send<boolean>(this.d.payer, factoryCalls(this.d.factory).createName(name, req.publicKey, req.appKey));
     if (!r.ok || r.value !== true) throw new RelayError(502, `could not create ${accountId}: ${r.error ?? "factory refused"}`);
     return { ...r, accountId };

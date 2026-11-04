@@ -64,13 +64,13 @@ describe("relay policy", () => {
 });
 
 describe("rate limiter", () => {
-  it("allows max per window, then resets", () => {
+  it("allows max per window, then resets", async () => {
     let t = 0;
     const l = new RateLimiter(() => t);
     const rule = { max: 2, windowMs: 1000 };
-    expect([l.take("k", rule), l.take("k", rule), l.take("k", rule)]).toEqual([true, true, false]);
-    expect(l.take("other", rule)).toBe(true);
+    expect([await l.take("k", rule), await l.take("k", rule), await l.take("k", rule)]).toEqual([true, true, false]);
+    expect(await l.take("other", rule)).toBe(true);
     t = 1000;
-    expect(l.take("k", rule)).toBe(true);
+    expect(await l.take("k", rule)).toBe(true);
   });
 });

@@ -1,0 +1,16 @@
+-- Generated from SCHEMA in packages/db/src/sql.ts (a test keeps them equal).
+CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, doc TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS invoices_owner ON invoices(owner);
+CREATE TABLE IF NOT EXISTS payments (deposit_address TEXT PRIMARY KEY, owner TEXT NOT NULL, direction TEXT NOT NULL, batch_id INTEGER, doc TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS payments_owner ON payments(owner);
+CREATE TABLE IF NOT EXISTS batches (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, doc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS merchants (id TEXT PRIMARY KEY, account TEXT NOT NULL UNIQUE, doc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS api_keys (hash TEXT PRIMARY KEY, merchant_id TEXT NOT NULL, doc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL, idem TEXT, created_at TEXT NOT NULL, doc TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_idem ON sessions(merchant_id, idem) WHERE idem IS NOT NULL;
+CREATE TABLE IF NOT EXISTS webhooks (id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL, status TEXT NOT NULL, next_at TEXT NOT NULL, doc TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS webhooks_due ON webhooks(status, next_at);
+CREATE TABLE IF NOT EXISTS refunds (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, deposit_address TEXT NOT NULL UNIQUE, doc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS claims (key TEXT PRIMARY KEY, until INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, win INTEGER NOT NULL, count INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS kv (ns TEXT NOT NULL, key TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (ns, key));

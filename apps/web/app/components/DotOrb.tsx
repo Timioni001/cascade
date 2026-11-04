@@ -28,7 +28,7 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
     });
 
     const styles = getComputedStyle(document.documentElement);
-    const accent = styles.getPropertyValue("--accent").trim() || "#d8f45c";
+    const ink = styles.getPropertyValue("--ink").trim() || "#111112";
     const radius = size * 0.42;
     const c = size / 2;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -47,9 +47,9 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
         const z = p.x * sin + p.z * cos;
         const depth = (z + 1) / 2; // 0 back .. 1 front
         const glow = Math.max(0, 1 - Math.abs(p.y - band) * 7) * (z > -0.2 ? 1 : 0.3);
-        const r = 0.7 + depth * 1.6 + glow * 1.5;
-        ctx.globalAlpha = 0.12 + depth * 0.7 + glow * 0.25;
-        ctx.fillStyle = glow > 0.15 ? accent : "#f4f4f2";
+        const r = 0.6 + depth * 1.3 + glow * 1.2;
+        ctx.globalAlpha = Math.min(1, 0.06 + depth * 0.42 + glow * 0.55);
+        ctx.fillStyle = ink;
         ctx.beginPath();
         ctx.arc(c + x * radius, c + p.y * radius, r, 0, Math.PI * 2);
         ctx.fill();
