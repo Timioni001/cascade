@@ -99,7 +99,7 @@ export default function Home() {
       </section>
 
       <footer className="container row tiny muted" style={{ padding: "32px 24px 48px", borderTop: "1px solid var(--line)" }}>
-        <span>Cascade · built at NEAR HACKATHON · MIT</span>
+        <span>© {new Date().getFullYear()} Cascade</span>
         <span>Settles through NEAR Intents</span>
       </footer>
     </div>
