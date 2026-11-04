@@ -8,6 +8,8 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { SqliteStore } from "@cascade/db";
 import { createPlatform } from "@cascade/platform";
 import { ConfigError, loadConfig } from "./config.js";
@@ -40,7 +42,12 @@ const p = createPlatform({
 const site = resolve(process.env.CASCADE_WEB_DIR ?? "apps/web/out");
 if (existsSync(site)) p.app.get("*", staticSite(site));
 
-serve({ fetch: p.app.fetch, port: cfg.port, hostname: "0.0.0.0" });
+// Compress responses (the web app's JS is ~70% smaller gzipped). Cloudflare
+// does this itself for the Worker; a plain Node host needs it here.
+const root = new Hono();
+root.use(compress());
+root.route("/", p.app);
+serve({ fetch: root.fetch, port: cfg.port, hostname: "0.0.0.0" });
 console.log(
   `cascade server on :${cfg.port} (${cfg.network}, app ${cfg.app}, 1Click ${p.mock ? "SIMULATED (testnet demo)" : cfg.oneclickJwt ? "live, with partner JWT" : "live, without partner JWT"}` +
     `, web ${existsSync(site) ? site : "not built"})`,

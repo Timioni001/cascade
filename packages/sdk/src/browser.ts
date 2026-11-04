@@ -53,16 +53,30 @@ export function openCheckout(o: OpenOptions): () => void {
   embedUrl.searchParams.set("embed", "1");
   embedUrl.searchParams.set("parent", window.location.origin);
 
+  // Motion: enter 240 ms ease-out, leave 160 ms ease-in, transform and opacity
+  // only (compositor). With Reduce Motion: a short fade, nothing moves.
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const enterMs = reduce ? 120 : 240;
+  const leaveMs = reduce ? 100 : 160;
+  const hidden = reduce ? "none" : "translateY(12px) scale(.98)";
+
   const overlay = document.createElement("div");
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,10,20,.55);display:flex;align-items:center;justify-content:center;z-index:2147483647";
+  overlay.setAttribute("aria-label", "Checkout");
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(10,10,20,.55);display:flex;align-items:center;justify-content:center;z-index:2147483647;" +
+    `opacity:0;transition:opacity ${enterMs}ms cubic-bezier(.2,.7,.2,1)`;
   const frame = document.createElement("iframe");
   frame.src = embedUrl.toString();
   frame.title = "Cascade checkout";
   frame.allow = "clipboard-write";
-  frame.style.cssText = "width:min(440px,100vw - 32px);height:640px;border:0;border-radius:16px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.3)";
+  // dvh: fits phones whose browser bars take part of the screen. Transparent, so no white flash before the page paints.
+  frame.style.cssText =
+    "width:min(440px,calc(100vw - 32px));height:min(640px,calc(100dvh - 32px));border:0;border-radius:16px;background:transparent;box-shadow:0 20px 60px rgba(0,0,0,.3);" +
+    `transform:${hidden};transition:transform ${enterMs}ms cubic-bezier(.2,.7,.2,1)`;
   overlay.appendChild(frame);
+  const opener = document.activeElement as HTMLElement | null;
 
   let done = false;
   const close = () => {
@@ -70,8 +84,15 @@ export function openCheckout(o: OpenOptions): () => void {
     done = true;
     window.removeEventListener("message", onMessage);
     document.removeEventListener("keydown", onKey);
-    overlay.remove();
-    o.onClose?.(sessionId);
+    overlay.style.transition = `opacity ${leaveMs}ms cubic-bezier(.4,0,1,1)`;
+    frame.style.transition = `transform ${leaveMs}ms cubic-bezier(.4,0,1,1)`;
+    overlay.style.opacity = "0";
+    frame.style.transform = hidden;
+    setTimeout(() => {
+      overlay.remove();
+      opener?.focus?.(); // back to the button that opened it
+      o.onClose?.(sessionId);
+    }, leaveMs);
   };
   const onMessage = (e: MessageEvent) => {
     if (e.origin !== origin || e.source !== frame.contentWindow || !isCheckoutMessage(e.data) || e.data.sessionId !== sessionId) return;
@@ -84,6 +105,11 @@ export function openCheckout(o: OpenOptions): () => void {
   window.addEventListener("message", onMessage);
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
+  requestAnimationFrame(() => {
+    overlay.style.opacity = "1";
+    frame.style.transform = "none";
+    frame.focus(); // keyboard and screen-reader users land in the checkout
+  });
   return close;
 }
 

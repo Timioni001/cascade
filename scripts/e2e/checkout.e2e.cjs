@@ -131,7 +131,7 @@ const assert = (c, m) => {
   await m.screenshot({ path: `${out}/10-mobile-checkout.png` });
 
   assert(errs.length === 0, `console errors: ${errs.join(" | ")}`);
-  console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${key ? ", dashboard + refund" : ""}, mobile`);
+  console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${key ? ", dashboard + refund, invoice paid from its page, subscriptions, customers, read-only key" : ""}, mobile`);
   await b.close();
 })().catch((e) => {
   console.error("e2e FAILED:", e.message);

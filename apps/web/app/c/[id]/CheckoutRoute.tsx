@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { routeId } from "../../../lib/api";
-import { Checkout } from "./Checkout";
+import { Checkout, CheckoutSkeleton } from "./Checkout";
 
 /** Reads the session id, embed flag and parent origin from the URL, then renders the checkout. */
 export function CheckoutRoute() {
@@ -18,6 +18,6 @@ export function CheckoutRoute() {
     }
     setRoute({ id: routeId(), embed: q.get("embed") === "1", parent });
   }, []);
-  if (!route) return null;
+  if (!route) return <CheckoutSkeleton />;
   return <Checkout id={route.id} embed={route.embed} parent={route.parent} />;
 }

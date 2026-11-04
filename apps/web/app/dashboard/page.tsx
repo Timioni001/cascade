@@ -202,8 +202,8 @@ export default function Dashboard() {
   return (
     <div className="page">
       <DemoBanner />
-      <div style={{ display: "grid", gridTemplateColumns: "232px minmax(0,1fr)", minHeight: "100vh" }} className="dash">
-        <aside style={{ borderRight: "1px solid var(--line)", padding: 20, display: "flex", flexDirection: "column", gap: 24, position: "sticky", top: 0, height: "100vh" }} className="dash-side">
+      <div style={{ display: "grid", gridTemplateColumns: "232px minmax(0,1fr)", minHeight: "100dvh" }} className="dash">
+        <aside style={{ borderRight: "1px solid var(--line)", padding: 20, display: "flex", flexDirection: "column", gap: 24, position: "sticky", top: 0, height: "100dvh" }} className="dash-side">
           <Brand />
           <nav style={{ display: "grid", gap: 4 }} aria-label="Dashboard">
             {nav.map(({ id, label, icon: Icon }) => (

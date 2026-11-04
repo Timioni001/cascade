@@ -7,7 +7,7 @@ import type { CheckoutSession, PayAsset, PaymentPreview } from "@cascade/sdk";
 import type { CheckoutMessage } from "@cascade/sdk/browser";
 import { paymentUri } from "@cascade/sdk/uris";
 import { PaymentQr } from "../../components/PaymentQr";
-import { CoinMark, DemoBanner, Mark, SANDBOX, chainName, short } from "../../components/ui";
+import { CoinMark, DemoBanner, Mark, SANDBOX, Skeleton, chainName, short } from "../../components/ui";
 import { publicApi as api } from "../../../lib/api";
 
 /** Shown first; everything else 1Click supports is under "More coins". */
@@ -168,13 +168,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
   const simulate = () => run(async () => setSession(await api<CheckoutSession>(`/dev/sessions/${id}/simulate-deposit`, {})));
 
   if (error && !session) return <main className="narrow"><div className="card error">{error}</div></main>;
-  if (!session) {
-    return (
-      <main className="narrow">
-        <div className="card row-start muted"><Loader2 size={16} className="spin" /> Loading checkout…</div>
-      </main>
-    );
-  }
+  if (!session) return <CheckoutSkeleton />;
 
   const paid = session.status === "paid";
   const p = session.payment;
@@ -185,7 +179,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
 
   return (
     <>
-      {!embed && <DemoBanner />}
+      <DemoBanner />
       <main ref={rootRef} className="narrow" style={embed ? { padding: 8 } : undefined}>
         <div className="card raised stack-lg rise">
           <div className="row">
@@ -322,6 +316,23 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
             <span className="row-start" style={{ gap: 6 }}><ShieldCheck size={14} /> No account needed</span>
             <span className="row-start" style={{ gap: 6 }}><Mark size={12} /> Cascade · NEAR Intents</span>
           </div>
+        </div>
+      </main>
+    </>
+  );
+}
+
+/** The checkout's layout before data arrives. Also pre-rendered into the static HTML, so it paints at first paint. */
+export function CheckoutSkeleton() {
+  return (
+    <>
+      <DemoBanner />
+      <main className="narrow" aria-busy="true" aria-label="Loading checkout">
+        <div className="card stack-lg">
+          <div className="row-start"><Skeleton w={36} h={36} r={12} /><div style={{ flex: 1 }} className="stack"><Skeleton w="45%" h={16} /><Skeleton w="30%" h={12} /></div></div>
+          <Skeleton w="50%" h={40} />
+          <Skeleton w="60%" h={14} />
+          <div className="grid-2">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} h={62} r={12} />)}</div>
         </div>
       </main>
     </>

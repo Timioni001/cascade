@@ -95,3 +95,8 @@ export function short(v: string): string {
 }
 
 export const usd = (units: string | number | bigint) => (Number(units) / 1e6).toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+/** Placeholder block that reserves the final content's space (no layout shift when data arrives). */
+export function Skeleton({ w = "100%", h = 14, r }: { w?: number | string; h?: number; r?: number }) {
+  return <span className="skeleton" aria-hidden="true" style={{ display: "block", width: w, height: h, ...(r !== undefined ? { borderRadius: r } : {}) }} />;
+}

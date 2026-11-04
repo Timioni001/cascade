@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ExternalLink, Loader2, X } from "lucide-react";
 import type { CheckoutSession } from "@cascade/sdk";
 import { nearTxUrl, publicApi, routeId } from "../../../lib/api";
-import { Brand, DemoBanner, chainName } from "../../components/ui";
+import { Brand, DemoBanner, Skeleton, chainName } from "../../components/ui";
 
 type ReceiptData = {
   session: CheckoutSession;
@@ -51,7 +51,12 @@ export function Receipt() {
       <main className="narrow stack-lg">
         <div className="row"><Brand /><span className="pill">Receipt</span></div>
         {error && <div className="card error">{error}</div>}
-        {!r && !error && <div className="card row-start muted"><Loader2 size={16} className="spin" /> Checking the chain…</div>}
+        {!r && !error && (
+          <div className="paper stack-lg" style={{ padding: 28 }} aria-busy="true" aria-label="Checking the chain">
+            <Skeleton w="35%" h={14} /><Skeleton w="55%" h={20} /><Skeleton w="45%" h={44} />
+            {[0, 1, 2, 3].map((i) => <div key={i} className="row-start"><Skeleton w={22} h={22} r={999} /><Skeleton w="70%" h={16} /></div>)}
+          </div>
+        )}
         {r && s && (
           <div className="paper rise" style={{ padding: 28, boxShadow: "var(--shadow)" }}>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Paid to</div>

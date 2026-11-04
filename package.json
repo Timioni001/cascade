@@ -47,7 +47,8 @@
     "@cascade/api": "workspace:*",
     "@cascade/sdk": "workspace:*",
     "@hono/node-server": "2.1.5",
-    "@cascade/platform": "workspace:*"
+    "@cascade/platform": "workspace:*",
+    "hono": "4.12.34"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

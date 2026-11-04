@@ -15,6 +15,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { formatUsd } from "@cascade/core";
 import { MemoryStore } from "@cascade/db";
 import { createPlatform, parseConfig } from "@cascade/platform";
@@ -49,7 +51,11 @@ function start(shop: { secretKey: string; webhookSecret: string } | null) {
 // The platform starts without the demo shop, the shop onboards through its
 // API like any merchant, then the platform restarts with the shop's keys.
 let platform = start(null);
-const server = serve({ fetch: (r) => platform.app.fetch(r), port: API_PORT, hostname: "127.0.0.1" });
+// Compressed like production (Cloudflare compresses; services/server does it with this middleware).
+const root = new Hono();
+root.use(compress());
+root.all("*", (c) => platform.app.fetch(c.req.raw));
+const server = serve({ fetch: root.fetch, port: API_PORT, hostname: "127.0.0.1" });
 const shop = await w.signUp("oakline");
 await w.engine.registerPerson(shop.gasless);
 const keys = await onboardMerchant(w, shop, "Oakline Ceramics", `${WEB}/api/shop/webhook`, API);

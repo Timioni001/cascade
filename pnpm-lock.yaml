@@ -47,6 +47,9 @@ importers:
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
+      hono:
+        specifier: 4.12.34
+        version: 4.12.34
       near-api-js:
         specifier: 7.4.0
         version: 7.4.0
