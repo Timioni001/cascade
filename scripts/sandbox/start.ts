@@ -57,5 +57,11 @@ export async function startSandbox(): Promise<Sandbox> {
     process.env.NEAR_SANDBOX_BIN_PATH = await prepareShimmedBinary();
   }
   process.env.NEAR_RPC_TIMEOUT_SECS ??= "60";
+  // near-sandbox downloads into the OS temp dir and then rename()s into
+  // node_modules. On WSL (and some Docker setups) /tmp is another filesystem,
+  // so the rename fails with EXDEV. Keep its temp files next to the repo.
+  const tmp = join(cache, "tmp");
+  mkdirSync(tmp, { recursive: true });
+  process.env.TMPDIR = tmp;
   return Sandbox.start({ version: SANDBOX_VERSION });
 }
