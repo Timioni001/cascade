@@ -103,8 +103,6 @@ try {
 } catch (e) {
   exit = 1;
   console.error(red(`\nDemo failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`));
-} finally {
-  await world.stop();
 }
 
 if (failures.length) exit = 1;
@@ -113,4 +111,6 @@ console.log(
     ? green(bold(`\nAll checks passed in ${((Date.now() - started) / 1000).toFixed(0)}s.`))
     : red(bold(`\n${failures.length} check(s) failed.`)),
 );
+console.log(dim("Stopping the local node..."));
+await world.stop();
 process.exit(exit);

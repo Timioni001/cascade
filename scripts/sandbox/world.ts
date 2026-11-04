@@ -208,8 +208,12 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
       expectOk(await chain.send(solver, ftCalls(ids.usdc).setBlocked(a, true)), "freeze");
     },
     stop: async () => {
-      await new Promise<void>((r) => server.close(() => r()));
-      await sandbox.tearDown();
+      // Never hang on shutdown: drop keep-alive connections, and give the
+      // node 10 s to stop (on WSL its teardown can wait forever).
+      const within = (p: Promise<unknown>, ms: number) => Promise.race([p, new Promise((r) => setTimeout(r, ms).unref())]);
+      (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
+      await within(new Promise<void>((r) => server.close(() => r())), 3_000);
+      await within(sandbox.tearDown().catch(() => undefined), 10_000);
     },
   };
 }
