@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: "Geist"; src: local("Geist"); }
+  :root { --bg: #0b0b0c; --ink: #f4f4f3; --muted: #8b8b93; --line: rgba(255,255,255,.1); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--ink); font-family: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  .frame { position: relative; overflow: hidden; background: radial-gradient(120% 90% at 78% 100%, #17171a 0%, var(--bg) 60%); }
+  canvas { position: absolute; inset: 0; }
+  .copy { position: absolute; z-index: 2; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04); border-radius: 999px; color: #d4d4d8; letter-spacing: .01em; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 12px #4ade80; }
+  .mark { display: inline-grid; place-items: center; background: var(--ink); color: var(--bg); }
+  h1 { font-weight: 650; letter-spacing: -0.055em; line-height: .9; }
+  .lede { color: #d4d4d8; letter-spacing: -0.02em; line-height: 1.15; }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .lede span { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { border: 1px solid var(--line); border-radius: 10px; color: #b5b5bd; }
+  .foot { position: absolute; z-index: 2; color: var(--muted); letter-spacing: .02em; }
+</style>
+</head>
+<body>
+<div class="frame" id="frame">
+  <canvas id="c"></canvas>
+  <div class="copy" id="copy">
+    <div class="pill" id="pill"><span class="dot"></span>Coming soon on NEAR</div>
+    <div class="brandrow" id="brandrow" style="display:flex;align-items:center">
+      <span class="mark" id="mark">
+        <svg viewBox="0 0 16 16" id="marksvg"><rect x="1.5" y="2" width="3" height="8" rx="1.5" fill="currentColor"/><rect x="6.5" y="4" width="3" height="10" rx="1.5" fill="currentColor"/><rect x="11.5" y="6" width="3" height="8" rx="1.5" fill="currentColor"/></svg>
+      </span>
+      <h1 id="title">Cascade</h1>
+    </div>
+    <p class="lede" id="lede"><b>Get paid in any coin.</b><br /><span>Receive dollars.</span></p>
+    <div class="chips" id="chips">
+      <span class="chip">Checkout</span><span class="chip">Invoices</span><span class="chip">Subscriptions</span><span class="chip">Payouts</span><span class="chip">Escrow</span><span class="chip">AI agents</span>
+    </div>
+  </div>
+  <div class="foot" id="foot">200+ coins · 35+ chains · settled by NEAR Intents</div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = Number(q.get("w") || 1600), H = Number(q.get("h") || 900);
+  const square = W / H < 1.4;
+  const frame = document.getElementById("frame");
+  frame.style.width = W + "px"; frame.style.height = H + "px";
+
+  // ---- typography layout
+  const u = Math.min(W, H) / 900;
+  const copy = document.getElementById("copy");
+  const pad = 96 * u;
+  Object.assign(copy.style, square ? { left: pad + "px", top: pad + "px", right: pad + "px" } : { left: pad + "px", top: 150 * u + "px", width: 760 * u + "px" });
+  const pill = document.getElementById("pill");
+  Object.assign(pill.style, { fontSize: 22 * u + "px", padding: `${10 * u}px ${20 * u}px` });
+  const mark = document.getElementById("mark"), marksvg = document.getElementById("marksvg");
+  Object.assign(mark.style, { width: 92 * u + "px", height: 92 * u + "px", borderRadius: 24 * u + "px", marginRight: 26 * u + "px" });
+  Object.assign(marksvg.style, { width: 50 * u + "px", height: 50 * u + "px" });
+  document.getElementById("brandrow").style.marginTop = 46 * u + "px";
+  document.getElementById("title").style.fontSize = (square ? 150 : 170) * u + "px";
+  const lede = document.getElementById("lede");
+  Object.assign(lede.style, { fontSize: (square ? 54 : 58) * u + "px", marginTop: 40 * u + "px" });
+  const chips = document.getElementById("chips");
+  chips.style.marginTop = 46 * u + "px"; chips.style.gap = 12 * u + "px"; if (square) chips.style.display = "none";
+  for (const c of chips.children) Object.assign(c.style, { fontSize: 20 * u + "px", padding: `${9 * u}px ${15 * u}px`, borderRadius: 12 * u + "px" });
+  const foot = document.getElementById("foot");
+  Object.assign(foot.style, { fontSize: 20 * u + "px", left: pad + "px", bottom: 64 * u + "px" });
+
+  // ---- the cascade: coin streams falling, braiding into one stream of dollars
+  const cv = document.getElementById("c");
+  const dpr = 2;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const g = cv.getContext("2d");
+  g.scale(dpr, dpr);
+
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+  const coins = square ? ["ETH", "SOL", "BTC", "USDT", "BASE", "ARB", "TON", "DOGE", "SUI"] : ["ETH", "SOL", "BTC", "USDT", "BASE", "ARB", "TON", "DOGE", "XRP", "BNB", "SUI", "ZEC"];
+  // Region where the art lives.
+  const x0 = square ? W * 0.30 : W * 0.5, x1 = square ? W * 0.96 : W * 0.97;
+  const topY = square ? H * 0.62 : -10;
+  const meet = square ? { x: W * 0.78, y: H * 0.86 } : { x: W * 0.8, y: H * 0.66 };
+  const out = square ? { x: W * 0.78, y: H + 20 } : { x: W * 0.8, y: H + 20 };
+
+  const bez = (p0, p1, p2, p3, t) => {
+    const m = 1 - t;
+    return { x: m*m*m*p0.x + 3*m*m*t*p1.x + 3*m*t*t*p2.x + t*t*t*p3.x, y: m*m*m*p0.y + 3*m*m*t*p1.y + 3*m*t*t*p2.y + t*t*t*p3.y };
+  };
+
+  const n = coins.length;
+  const streams = coins.map((sym, i) => {
+    const sx = x0 + (x1 - x0) * (i + 0.5) / n + (rnd() - 0.5) * 18;
+    const sy = topY + (square ? 30 * u : 60 * u) + (rnd() - 0.5) * 20;
+    return { sym, p0: { x: sx, y: sy }, p1: { x: sx + (rnd() - 0.5) * 40, y: sy + (meet.y - sy) * (0.45 + rnd() * 0.2) }, p2: { x: meet.x + (sx - meet.x) * 0.18, y: meet.y - (meet.y - sy) * 0.18 }, p3: meet };
+  });
+
+  // Faint guide lines.
+  g.lineWidth = 1;
+  for (const s of streams) {
+    g.strokeStyle = "rgba(255,255,255,0.045)";
+    g.beginPath();
+    g.moveTo(s.p0.x, s.p0.y);
+    g.bezierCurveTo(s.p1.x, s.p1.y, s.p2.x, s.p2.y, s.p3.x, s.p3.y);
+    g.stroke();
+  }
+
+  // Dots along each stream, denser and brighter as they converge.
+  for (const s of streams) {
+    const count = 150;
+    for (let k = 0; k < count; k++) {
+      const t = Math.pow(k / count, 0.85) + rnd() * 0.004;
+      const p = bez(s.p0, s.p1, s.p2, s.p3, Math.min(1, t));
+      const jitter = (1 - t) * 3.2;
+      const r = 0.7 + t * 1.5 + rnd() * 0.5;
+      g.globalAlpha = 0.12 + t * 0.6 * (0.6 + rnd() * 0.4);
+      g.fillStyle = "#f4f4f3";
+      g.beginPath();
+      g.arc(p.x + (rnd() - 0.5) * jitter, p.y + (rnd() - 0.5) * jitter, r, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  // The merged stream: one bright braid falling to the bottom edge.
+  for (let k = 0; k < 520; k++) {
+    const t = k / 520;
+    const y = meet.y + (out.y - meet.y) * t;
+    const spread = 7 * (1 - t * 0.4);
+    const x = meet.x + Math.sin(t * 22 + rnd()) * spread * 0.6 + (rnd() - 0.5) * spread;
+    g.globalAlpha = 0.55 + rnd() * 0.45;
+    g.beginPath();
+    g.arc(x, y, 1.5 + rnd() * 1.4, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // Glow where everything meets.
+  g.globalAlpha = 1;
+  const glow = g.createRadialGradient(meet.x, meet.y, 0, meet.x, meet.y, 160 * u);
+  glow.addColorStop(0, "rgba(255,255,255,0.20)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = glow;
+  g.fillRect(meet.x - 200 * u, meet.y - 200 * u, 400 * u, 400 * u);
+
+  // Ticker labels at the head of each stream.
+  g.globalAlpha = 1;
+  g.font = `600 ${15 * u}px Geist, Inter, ui-sans-serif, system-ui, sans-serif`;
+  g.textAlign = "center";
+  streams.forEach((s, i) => {
+    const y = (square ? topY + 6 * u : 40 * u) + (i % 2) * 34 * u;
+    const w = g.measureText(s.sym).width + 16 * u;
+    g.fillStyle = "rgba(11,11,12,0.85)";
+    g.strokeStyle = "rgba(255,255,255,0.16)";
+    g.beginPath();
+    g.roundRect(s.p0.x - w / 2, y - 14 * u, w, 26 * u, 8 * u);
+    g.fill();
+    g.stroke();
+    g.fillStyle = "#c9c9cf";
+    g.fillText(s.sym, s.p0.x, y + 5 * u);
+  });
+
+  // The destination: one label, dollars.
+  const label = "$ USDC";
+  g.font = `650 ${26 * u}px Geist, Inter, ui-sans-serif, system-ui, sans-serif`;
+  const lw = g.measureText(label).width + 36 * u;
+  const ly = meet.y - 4 * u;
+  const lx = Math.min(meet.x + 34 * u, W - lw - 24 * u);
+  g.fillStyle = "#f4f4f3";
+  g.beginPath();
+  g.roundRect(lx, ly - 24 * u, lw, 46 * u, 23 * u);
+  g.fill();
+  g.fillStyle = "#0b0b0c";
+  g.textAlign = "left";
+  g.fillText(label, lx + 18 * u, ly + 8 * u);
+
+  document.body.dataset.ready = "1";
+</script>
+</body>
+</html>
