@@ -298,7 +298,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       io.step("Done");
       io.log(`app ${r.app} · factory ${r.factory} · token ${r.usdc}${r.usdcIsMock ? " (mock)" : ""}`);
       io.log("Next: set CASCADE_APP_ID, CASCADE_FACTORY_ID and USDC_CONTRACT_ID in .env from deployments/" + `${r.network}.json`);
-    } else process.exitCode = dryRun ? 0 : 1;
+    } else if (dryRun) {
+      io.log("Dry run ends at the first transaction: every later step depends on it. Nothing was signed and .env is unchanged.");
+      io.log("Plan: relayer (3 NEAR), settler (1), mock USDC (3), app contract (~6.3, locked), factory on the root, then checks.");
+    } else process.exitCode = 1;
   } finally {
     io.close();
   }
