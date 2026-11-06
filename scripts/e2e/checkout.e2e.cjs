@@ -144,6 +144,40 @@ const assert = (c, m) => {
   await m.waitForSelector("text=Payment complete");
   await m.screenshot({ path: `${out}/10-mobile-checkout.png` });
 
+  // Self-serve: a visitor creates a sandbox merchant, rings up a sale at the point of sale, a customer pays it.
+  const st = await page(1280, 900);
+  await st.goto(`${BASE}/start`);
+  await st.fill("input[aria-label='Business name']", "Kiln Coffee");
+  await st.click("text=Create a sandbox account");
+  await st.waitForSelector("text=is ready on NEAR", { timeout: 90000 });
+  await st.screenshot({ path: `${out}/20-start-sandbox.png` });
+  await st.click("button:has-text('Point of sale')");
+  await st.waitForURL(/\/pos/);
+  for (const d of ["1", "2", "5", "0"]) await st.click(`button[aria-label='${d}']`);
+  await st.fill("input[aria-label='Description']", "Flat white and a croissant");
+  await st.click("text=Charge $12.50");
+  await st.waitForSelector("text=Scan to pay with any coin");
+  await st.screenshot({ path: `${out}/21-pos-qr.png` });
+  const payUrl = await st.getAttribute("a:has-text('Open the checkout on this device')", "href");
+  const cust = await page(430, 900);
+  await cust.goto(payUrl);
+  await cust.click("button[aria-pressed]:has-text('Base') >> nth=0");
+  await cust.fill("input", "0x2527D02599Ba641c19FEa793cD0F167589a0f10D");
+  await cust.click("text=Get payment address");
+  await cust.click("text=Simulate the payment (sandbox)");
+  await st.waitForSelector("text=Paid. The money is in your account", { timeout: 60000 });
+  await st.screenshot({ path: `${out}/22-pos-paid.png` });
+
+  // Phone widths: landing, shop, developers.
+  for (const [name, path] of [["23-mobile-landing", "/"], ["24-mobile-shop", "/shop"], ["25-mobile-developers", "/developers"]]) {
+    const ph = await page(390, 844);
+    await ph.goto(`${BASE}${path}`);
+    await ph.waitForTimeout(500);
+    const overflow = await ph.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert(overflow <= 1, `${path} scrolls sideways on a phone (${overflow}px)`);
+    await ph.screenshot({ path: `${out}/${name}.png`, fullPage: true });
+  }
+
   assert(errs.length === 0, `console errors: ${errs.join(" | ")}`);
   console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${key ? ", dashboard + refund, invoice paid from its page, subscriptions, customers, read-only key" : ""}, mobile`);
   await b.close();

@@ -46,6 +46,8 @@ const refund = await cascade.refunds.create(session.id, { amount: "10.00" }); //
 - **Agent budgets (on-chain):** an owner gives an AI agent an allowance with a per-payment limit, a daily limit, an expiry and optional allowed recipients. The agent pays x402 invoices with `agent_pay`, gaslessly; the contract refuses anything outside the limits, and revoking returns the rest at once.
 - **AI assistants (MCP):** `cascade-mcp` lets Claude, Cursor or any MCP client run the account ("invoice Fieldwork Café for 24 mugs") and lets an agent pay x402 APIs from its budget with `paid_fetch`. Every agent payment's receipt shows who authorized it, for what, and within which limits. Setup: [docs/mcp.md](docs/mcp.md).
 - **Pay out from the dashboard view:** payouts to any chain, escrows with milestone progress (and a funding link the client pays in any coin), and agent budgets with today's spend.
+- **Point of sale:** a merchant types an amount on a phone or tablet ([`/pos`](apps/web/app/pos/page.tsx)); the customer scans the QR and pays in any coin; the screen turns green when the money has arrived, with an on-chain receipt.
+- **Self-serve onboarding:** instant sandbox accounts for anyone and a live-access application for businesses ([`/start`](apps/web/app/start/page.tsx)).
 - **Team access:** read-only keys (`rk_…`) for an accountant or a support tool can see everything and change nothing.
 
 ```ts
@@ -56,7 +58,17 @@ await cascade.checkout.create({ amount: "800.00", description: "Custom tableware
 const readOnly = await cascade.merchant.keys.create({ role: "read", label: "Accountant" });
 ```
 
-## Try it
+## Use it
+
+| | Who | How |
+| --- | --- | --- |
+| **Sandbox** | Anyone, instantly | [`/start`](https://cascade.timioni1490.workers.dev/start) creates a real NEAR testnet account for your business, registers it with Cascade and gives you secret keys, the dashboard and the point of sale. Customer payments are simulated; contracts and receipts are real. |
+| **Live** | Businesses | Apply at [`/start`](https://cascade.timioni1490.workers.dev/start). Live keys are issued after a short review; the API and dashboard are the same as in the sandbox. |
+| **Developers** | | [`/developers`](https://cascade.timioni1490.workers.dev/developers): quickstart, API reference, webhooks, x402, MCP. |
+
+Live testnet deployment: **[cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev)**: [demo shop](https://cascade.timioni1490.workers.dev/shop), [point of sale](https://cascade.timioni1490.workers.dev/pos), [dashboard](https://cascade.timioni1490.workers.dev/dashboard).
+
+## Try it locally
 
 Requirements: Node 22.13+, pnpm 10, internet access for the first run (downloads the NEAR sandbox node, ~90 MB). No keys, no money, no Rust.
 
@@ -95,7 +107,8 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 
 | What | Where | Link |
 | --- | --- | --- |
-| Live demo (shop, checkout, receipts, dashboard) | NEAR testnet | to be added after `pnpm deploy:cascade` + hosting |
+| Live demo (shop, checkout, point of sale, dashboard, sandbox sign-up) | NEAR testnet, Cloudflare | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
+| First live checkout: $25.00 paid, receipt #0 recorded on-chain | NEAR testnet | [receipt](https://cascade.timioni1490.workers.dev/r/cs_aIGePC35X1T6gDz0Il) · [transaction](https://testnet.nearblocks.io/txns/2zxX5hs1mhN7BibqsZ9TZwUythmfmqZagzZXC233fY7M) |
 | Contracts (app locked, factory, mock USDC) | NEAR testnet | `deployments/testnet.json` |
 | $1 paid from Base, received as USDC on NEAR via 1Click | Mainnet | to be added (`pnpm spike incoming`) |
 | $1 sent from NEAR back to Base via 1Click | Mainnet | to be added (`pnpm spike outgoing`) |

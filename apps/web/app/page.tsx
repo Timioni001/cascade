@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Bot, Building2, Coins, FileCheck2, QrCode, Repeat2, Split, Undo2, Zap } from "lucide-react";
+import { ArrowUpRight, Bot, Building2, Coins, FileCheck2, Lock, QrCode, Repeat2, ScrollText, Split, Store, Undo2, Zap } from "lucide-react";
 import { DotOrb } from "./components/DotOrb";
 import { DemoBanner, Nav } from "./components/ui";
 
@@ -11,11 +11,14 @@ const steps = [
 
 const features = [
   { icon: Zap, title: "One-button checkout", body: "Drop in openCheckout() or share a link. Hosted page, QR codes, wallet payments." },
-  { icon: Bot, title: "AI agents pay too", body: "Protect any API with x402: agents get HTTP 402, pay with any coin, and retry." },
+  { icon: Store, title: "Point of sale", body: "Type an amount on your phone; the customer scans and pays in any coin. Green when the money lands." },
+  { icon: ScrollText, title: "Invoices and subscriptions", body: "Numbered invoices with due dates, plans billed every period, prepaid months, reminders." },
+  { icon: Building2, title: "Payouts and payroll", body: "Pay up to 50 people on their own chains in one batch, after your DAO approves. Approvers pay no fees." },
+  { icon: Lock, title: "Milestone escrow", body: "The contract holds the client's money and releases each milestone when they approve it." },
   { icon: Split, title: "Revenue splits", body: "80% shop, 15% artist, 5% community DAO, split by the contract the moment money arrives." },
+  { icon: Bot, title: "AI agents with budgets", body: "Agents pay APIs over x402 within limits the contract enforces; every receipt shows who authorized them." },
   { icon: Undo2, title: "Refunds that work", body: "Send money back in the coin and on the chain the customer paid with." },
   { icon: FileCheck2, title: "Verifiable receipts", body: "Every payment has a public receipt anyone can check against the chain." },
-  { icon: Building2, title: "Team payroll", body: "Pay people on any chain after your Sputnik DAO approves. Approvers pay no fees." },
 ];
 
 const code = `import { Cascade } from "@cascade/sdk/server";
@@ -43,8 +46,8 @@ export default function Home() {
             Your customers pay with whatever they hold, on any chain. You receive the exact amount in USDC on NEAR, in your own account. Cascade never holds your money.
           </p>
           <div className="row-start" style={{ flexWrap: "wrap", marginTop: 28 }}>
-            <Link className="btn" href="/shop">Try the demo shop <ArrowUpRight size={16} /></Link>
-            <a className="btn ghost" href="#developers">For developers</a>
+            <Link className="btn" href="/start">Start in the sandbox <ArrowUpRight size={16} /></Link>
+            <Link className="btn ghost" href="/shop">Try the demo shop</Link>
           </div>
           <div className="row-start tiny muted" style={{ flexWrap: "wrap", gap: 16, marginTop: 28 }}>
             <span className="row-start" style={{ gap: 6 }}><QrCode size={14} /> 200+ coins, 35+ chains</span>

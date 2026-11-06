@@ -114,7 +114,7 @@ export default function Shop() {
 
           <div className="small soft" style={{ display: "grid", gap: 10, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
             <span className="row-start" style={{ gap: 8 }}><Package size={15} /> Pay with any coin on any chain; the shop receives dollars</span>
-            <span className="row-start" style={{ gap: 8 }}><Bot size={15} /> For agents: <code className="mono">GET /api/shop/forecast</code> costs $0.10 per call (x402)</span>
+            <span className="row-start" style={{ gap: 8, alignItems: "flex-start" }}><Bot size={15} style={{ flex: "none", marginTop: 3 }} /><span>For agents: <code className="mono">GET /api/shop/forecast</code> costs $0.10 per call (x402)</span></span>
           </div>
         </div>
       </main>

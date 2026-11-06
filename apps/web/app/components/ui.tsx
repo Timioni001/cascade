@@ -31,11 +31,11 @@ export function Nav({ right }: { right?: ReactNode }) {
         <Brand />
         <nav className="nav-links" aria-label="Main">
           <a href="/#how">How it works</a>
-          <a href="/#developers">Developers</a>
+          <a href="/developers">Developers</a>
           <a href="/shop">Demo shop</a>
-          <a href="/dashboard">Dashboard</a>
+          <a href="/dashboard">Sign in</a>
         </nav>
-        {right ?? <Link className="btn sm" href="/dashboard">Open dashboard</Link>}
+        {right ?? <Link className="btn sm" href="/start">Start free</Link>}
       </div>
     </header>
   );

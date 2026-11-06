@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Bot, Download, FileText, LayoutGrid, Link2, Loader2, Lock, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Send, Settings2, Undo2, Users, Webhook } from "lucide-react";
+import { ArrowUpRight, Bot, Download, FileText, LayoutGrid, Link2, Loader2, Lock, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Send, Settings2, Store, Undo2, Users, Webhook } from "lucide-react";
 import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
 import { Badge, Brand, DemoBanner, chainName, toneOf, usd } from "../components/ui";
 import { API } from "../../lib/api";
@@ -248,6 +248,7 @@ export default function Dashboard() {
             </div>
             <div className="row-start">
               <button className="icon-btn" onClick={() => void load()} aria-label="Refresh">{loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}</button>
+              <a className="btn ghost sm" href="/pos"><Store size={15} /> Point of sale</a>
               <button className="btn sm" onClick={() => setTab("payments")}><Plus size={15} /> New payment link</button>
             </div>
           </div>
