@@ -1,0 +1,63 @@
+[
+  {
+    "at": "2026-11-06T14:22:26.717Z",
+    "spike": "incoming",
+    "to": "cascade-dev.near",
+    "asset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "amount": "1.00",
+    "depositAddress": "0x1ae6fdEbd20e8e55a7d6BE7e278c37A47B52dE0f",
+    "correlationId": "19967711-959c-442c-9a5c-e545727b1ccb",
+    "signature": "ed25519:5J17UbbrCA7NJHivW7E1T69mhbSo27kXKwqo3f4fbTP5RWaMPBHVcdaNc4iV3Ggf4spVpYfS9pesmdxkBNPNvYYD",
+    "deadline": "2026-11-09T15:18:02.596Z",
+    "status": "SUCCESS",
+    "amountIn": "1.004745",
+    "amountOut": "1.0",
+    "refunded": "0",
+    "refundReason": null,
+    "nearTxHashes": [
+      "E7RsoXXiGLqk7NsD3wJuA1qKyn8obQcQF5aHRGzdFAfk",
+      "2WCHoDJXcLh4gunwDKZnD4BN3tsAY4i5MUTxDMkJRTBa",
+      "BKRydwVKm3xb3G2pShKUYUZn4e2FEB6MQni5pFcMd5XD",
+      "FLf4dvUSLR2dEeJTHZXknjSybuipCbSpgSBU4sDqPKr8"
+    ],
+    "originTx": [
+      "0xd96897cadd46d529d3146471b791d70950f6299857a349f243db1e3e58505edf"
+    ],
+    "destinationTx": [
+      "FLf4dvUSLR2dEeJTHZXknjSybuipCbSpgSBU4sDqPKr8"
+    ]
+  },
+  {
+    "at": "2026-11-06T15:05:30.814Z",
+    "spike": "outgoing",
+    "from": "cascade-dev.near",
+    "chain": "base",
+    "recipient": "0xaC2f670Bfb670ccF3Ece326C1e3CEaaF5E00bB94",
+    "amount": "1.00",
+    "depositAddress": "4b5307f98691ac413c7c23c871ff511d4a994c039304b2018f3fe36951372d6d",
+    "depositWasRegistered": false,
+    "confidentiality": "public",
+    "correlationId": "7f7d8e17-6de0-4d15-95cc-595eb28f0651",
+    "nearTxs": {
+      "register deposit address with USDC": "BQ2zMAs8eYiFyEXedy7gKiFa3GgB7NZMzLDkFJve1cVE",
+      "send USDC to the deposit address": "BmpqAtYiuwi1j4YRc2kzN6y9GqpK2nP4bXCUNq383KCu"
+    },
+    "status": "SUCCESS",
+    "amountIn": "1.0",
+    "amountOut": "0.997398",
+    "refunded": "0",
+    "refundReason": null,
+    "nearTxHashes": [
+      "5raJSZCMx8qKBYjyC7mTrzZW78P1n6pw7oWreC7KhwZM",
+      "2NxuacJRVMPAm9VQ3LMEsRbxqBfAW13ze46rEtjnQkaD",
+      "7xYeVu5SgxhCfqWmJ1Ak3tBcjiYeiqoYmV6djDPhgqHZ",
+      "AfevEhJpLCiPBnt5WumWi7nj8CMBvTFxsyXXZqLrLkcL"
+    ],
+    "originTx": [
+      "BmpqAtYiuwi1j4YRc2kzN6y9GqpK2nP4bXCUNq383KCu"
+    ],
+    "destinationTx": [
+      "0x08672264184dedbf01082aa96551f58647074078fc8c3216f132a5dad672992b"
+    ]
+  }
+]
