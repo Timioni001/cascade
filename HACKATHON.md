@@ -57,6 +57,7 @@ Most of the code was written by Claude Code (Anthropic) working with the team le
 | wrangler (Cloudflare) | 4.151.2 | Builds, runs locally and deploys the Worker (D1, cron) |
 | lucide-react | 1.59.0 | Icons |
 | Geist, Geist Mono (via next/font) | | Typeface |
+| cryptocurrency-icons (SVG files only) | 0.18.1 | Coin logos on the landing page. CC0-1.0 (public domain); eight monochrome SVGs copied into `apps/web/public/coins`, no runtime dependency |
 | vitest, tsx, typescript | 4.1.12, 4.23.15, 5.9.3 | Tests and tooling |
 | Sputnik DAO v2 (wasm) | mainnet code hash 2Zof1Tyy... | Real DAO contract in the sandbox; not modified. See contracts/res/README.md |
 

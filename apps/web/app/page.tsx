@@ -65,25 +65,47 @@ const session = await cascade.checkout.create({
 // browser: openCheckout({ sessionUrl: session.url })
 // webhook: verifyWebhook(body, header, secret) -> ship it`;
 
+/** Coins float over the cascade. Monochrome: the logo's own shape, in ink. */
+const floaters: { c: string; x: number; y: number; size: number; delay: number }[] = [
+  { c: "btc", x: 44, y: 2, size: 46, delay: 0 },
+  { c: "eth", x: 78, y: 20, size: 40, delay: 1.1 },
+  { c: "sol", x: 88, y: 56, size: 34, delay: 2.2 },
+  { c: "usdc", x: 62, y: 82, size: 42, delay: 0.6 },
+  { c: "usdt", x: 28, y: 88, size: 34, delay: 1.7 },
+  { c: "xrp", x: 4, y: 60, size: 40, delay: 2.8 },
+  { c: "doge", x: 10, y: 24, size: 36, delay: 1.4 },
+  { c: "bnb", x: 22, y: 50, size: 32, delay: 2.4 },
+];
+
 /**
- * The hero: the cascade of dots, and what comes out of it. Monochrome on
- * purpose: no coin logos, no colour except a payment's status.
+ * The hero: the cascade of dots with coins floating over it, and the receipt
+ * off to the side. Monochrome on purpose, so colour only ever means status.
  */
 function HeroPreview() {
   return (
     <div className="hero-preview" aria-hidden="true">
       <div className="globe">
-        <DotOrb size={460} points={2600} />
-        <div className="globe-chip chip-paid">
-          <span className="net-dot" />
-          <span><strong>$25.00</strong> USDC received</span>
-        </div>
-        <div className="globe-chip chip-receipt">
-          <span className="stub-perf" />
-          <FileCheck2 size={14} />
-          <span>Receipt #128 on NEAR</span>
-          <Check size={13} />
-        </div>
+        <DotOrb size={430} points={2600} />
+        {floaters.map(({ c, x, y, size, delay }) => (
+          <span
+            key={c}
+            className="coin-float"
+            style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, animationDelay: `${delay}s` }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/coins/${c}.svg`} alt="" width={size} height={size} />
+          </span>
+        ))}
+      </div>
+      <div className="globe-chip chip-paid">
+        <span className="net-dot" />
+        <span><strong>$25.00</strong> USDC received</span>
+      </div>
+      <div className="globe-chip chip-receipt">
+        <span className="stub-perf" />
+        <FileCheck2 size={14} />
+        <span>Receipt #128 on NEAR</span>
+        <Check size={13} />
       </div>
     </div>
   );

@@ -284,11 +284,30 @@ button { font: inherit; color: inherit; }
 @media (max-width: 860px) { .nav-menu { display: block; } }
 
 /* ---------- hero: the dot cascade, monochrome */
-.globe { position: relative; width: min(100%, 480px); aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; }
+.hero-preview { position: relative; display: grid; place-items: center; padding: 28px 0; }
+.globe { position: relative; width: min(100%, 430px); aspect-ratio: 1; display: grid; place-items: center; }
+
+/* Coins drift over the sphere. The logos are single-colour, so dark mode just inverts them. */
+.coin-float { position: absolute; display: grid; place-items: center; margin: -5% 0 0 -5%; animation: bob 7s ease-in-out infinite; }
+.coin-float img { width: 100%; height: 100%; opacity: .92; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--ink) 22%, transparent)); }
+@keyframes bob { 0%, 100% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
+
+/* Cards sit in the corners the circle leaves empty, clear of the sphere. */
 .globe-chip { position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 11px 15px; border-radius: var(--r-md); background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.8125rem; font-weight: 500; animation: float-in .6s cubic-bezier(.2,.7,.2,1) both; }
-.chip-paid { top: 12%; right: -4%; animation-delay: .35s; }
-.chip-receipt { bottom: 14%; left: -6%; animation-delay: .55s; }
+.chip-paid { top: 0; right: 0; animation-delay: .35s; }
+.chip-receipt { bottom: 0; left: 0; animation-delay: .55s; }
 .stub-perf { position: absolute; left: 14px; right: 14px; top: -1px; border-top: 1.5px dashed var(--line-strong); }
-@media (max-width: 900px) { .globe { width: min(100%, 340px); } .chip-paid { right: 0; } .chip-receipt { left: 0; } .globe-chip { font-size: 0.75rem; padding: 9px 12px; } }
+
+@media (prefers-reduced-motion: reduce) { .coin-float { animation: none; } }
+@media (max-width: 900px) {
+  .globe { width: min(100%, 320px); }
+  .globe-chip { font-size: 0.75rem; padding: 9px 12px; }
+  .chip-paid { top: -6px; right: -6px; }
+  .chip-receipt { bottom: -6px; left: -6px; }
+}
 
 @media (max-width: 560px) { .net-chip { display: none; } .nav-inner { gap: 8px; } }
+
+/* The coin logos ship black; dark mode flips them to white. */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); } }
+:root[data-theme="dark"] .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); }
