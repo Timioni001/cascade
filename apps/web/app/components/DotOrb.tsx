@@ -27,8 +27,18 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
       return { x: Math.cos(t) * r, y, z: Math.sin(t) * r };
     });
 
-    const styles = getComputedStyle(document.documentElement);
-    const ink = styles.getPropertyValue("--ink").trim() || "#111112";
+    // The ink colour flips with the theme, so re-read it whenever that changes
+    // (a canvas cannot inherit a CSS variable the way an element does).
+    const readInk = () => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#111112";
+    let ink = readInk();
+    const onTheme = () => {
+      ink = readInk();
+      if (still) draw(performance.now());
+    };
+    const themeAttr = new MutationObserver(onTheme);
+    themeAttr.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    scheme.addEventListener("change", onTheme);
     const radius = size * 0.42;
     const c = size / 2;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -57,13 +67,13 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
         const z = p.x * sin + p.z * cos;
         const depth = (z + 1) / 2; // 0 back .. 1 front
         const glow = Math.max(0, 1 - Math.abs(p.y - band) * 7) * (z > -0.2 ? 1 : 0.3);
-        const r = 0.6 + depth * 1.3 + glow * 1.2;
+        const r = 0.75 + depth * 1.15 + glow * 1.1;
         const alpha = Math.min(1, 0.06 + depth * 0.42 + glow * 0.55);
         const px = c + x * radius;
         const py = c + p.y * radius;
         const path = paths[Math.min(LEVELS - 1, Math.floor(alpha * LEVELS))]!;
         // Dots under ~2px across look the same as squares and are far cheaper to rasterize.
-        if (r < 1.1) path.rect(px - r, py - r, r * 2, r * 2);
+        if (r < 1.05) path.rect(px - r, py - r, r * 2, r * 2);
         else {
           path.moveTo(px + r, py);
           path.arc(px, py, r, 0, Math.PI * 2);
@@ -87,6 +97,8 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
     return () => {
       cancelAnimationFrame(raf);
       io.disconnect();
+      themeAttr.disconnect();
+      scheme.removeEventListener("change", onTheme);
     };
   }, [size, points]);
 

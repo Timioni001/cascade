@@ -74,20 +74,20 @@ Live testnet deployment: **[cascade.timioni1490.workers.dev](https://cascade.tim
 
 | | |
 | --- | --- |
-| ![Landing](docs/media/screens/landing.png) | ![Checkout: pick a coin, scan or pay from a wallet](docs/media/screens/checkout.png) |
-| **Landing.** Start free in the sandbox or apply for live access. | **Checkout.** Any coin on any chain, QR or wallet; the merchant receives exact dollars. |
+| ![Landing, light](docs/media/screens/landing.png) | ![Landing, dark](docs/media/screens/landing-dark.png) |
+| **Landing.** Start free in the sandbox, or apply for live access. | **Dark mode.** One toggle in the nav; the cascade follows it. |
+| ![Checkout](docs/media/screens/checkout.png) | ![Receipt](docs/media/screens/receipt.png) |
+| **Checkout.** Any coin on any chain, QR or wallet; the merchant receives exact dollars. | **Receipt.** Four checks recomputed from the chain on every load. |
 | ![Point of sale](docs/media/screens/pos.png) | ![Point of sale, paid](docs/media/screens/pos-paid.png) |
-| **Point of sale.** Type an amount; the customer scans and pays. | **Paid.** Confirmed when the money arrives, with an on-chain receipt. |
+| **Point of sale.** Type an amount; the customer scans and pays. | **Paid in person.** Green when the money has actually arrived. |
 | ![Dashboard](docs/media/screens/dashboard.png) | ![Hosted invoice](docs/media/screens/invoice.png) |
-| **Dashboard.** Balance, revenue, payments, refunds. | **Invoices.** Line items, due dates, pay with any coin. |
+| **Dashboard.** Balance, revenue, payments, refunds. | **Invoices.** Line items, due dates, payable in any coin. |
 | ![Subscriptions](docs/media/screens/subscriptions.png) | ![Payouts](docs/media/screens/payouts.png) |
 | **Subscriptions.** Plans, renewals, prepaid periods. | **Payouts.** One batch, every recipient on their own chain. |
 | ![Escrow](docs/media/screens/escrow.png) | ![Agent budgets](docs/media/screens/agents.png) |
 | **Escrow.** Held by the contract, released per milestone. | **Agents.** Budgets with on-chain limits, MCP for assistants. |
-| ![Sandbox sign-up](docs/media/screens/start.png) | ![Receipt](docs/media/screens/receipt.png) |
-| **Sandbox in seconds.** A real testnet account with keys. | **Receipt.** Four checks recomputed from the chain. |
-
-<p align="center"><img src="docs/media/screens/mobile-shop.png" width="260" alt="Shop on a phone" /> <img src="docs/media/screens/mobile-checkout.png" width="260" alt="Checkout on a phone" /></p>
+| ![Sandbox sign-up](docs/media/screens/start.png) | ![Mobile](docs/media/screens/mobile-shop.png) |
+| **Sandbox in seconds.** A real testnet account with keys. | **On a phone.** Every page, down to 390px. |
 
 ## Try it locally
 
@@ -131,8 +131,9 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 | Live demo (shop, checkout, point of sale, dashboard, sandbox sign-up) | NEAR testnet, Cloudflare | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
 | First live checkout: $25.00 paid, receipt #0 recorded on-chain | NEAR testnet | [receipt](https://cascade.timioni1490.workers.dev/r/cs_aIGePC35X1T6gDz0Il) · [transaction](https://testnet.nearblocks.io/txns/2zxX5hs1mhN7BibqsZ9TZwUythmfmqZagzZXC233fY7M) |
 | Contracts (app locked, factory, mock USDC) | NEAR testnet | `deployments/testnet.json` |
-| $1 paid from Base, received as USDC on NEAR via 1Click | Mainnet | to be added (`pnpm spike incoming`) |
-| $1 sent from NEAR back to Base via 1Click | Mainnet | to be added (`pnpm spike outgoing`) |
+| **$1 paid from Base, received as USDC on NEAR** through NEAR Intents (1Click) | Mainnet | [paid on Base](https://basescan.org/tx/0xd96897cadd46d529d3146471b791d70950f6299857a349f243db1e3e58505edf) → [delivered on NEAR](https://nearblocks.io/txns/FLf4dvUSLR2dEeJTHZXknjSybuipCbSpgSBU4sDqPKr8) ($1.004745 in, $1.00 out) |
+| **$1 sent from NEAR back to Base** through 1Click | Mainnet | [sent on NEAR](https://nearblocks.io/txns/AfevEhJpLCiPBnt5WumWi7nj8CMBvTFxsyXXZqLrLkcL) → [received on Base](https://basescan.org/tx/0x08672264184dedbf01082aa96551f58647074078fc8c3216f132a5dad672992b) ($1.00 in, $0.997398 out) |
+| Full records, including quote signatures and deadlines | Mainnet | [`deployments/mainnet-spikes.json`](deployments/mainnet-spikes.json) |
 
 ## Tests
 
@@ -226,6 +227,7 @@ Step by step, limits and settings: [docs/hosting.md](docs/hosting.md).
 - [docs/research.md](docs/research.md): hackathon rules, 1Click, x402 and NEAR facts we verified, gotchas found
 - [docs/spikes.md](docs/spikes.md): the mainnet tests still to run
 - [docs/mainnet-runbook.md](docs/mainnet-runbook.md) and [docs/hosting.md](docs/hosting.md)
+- [docs/demo-script.md](docs/demo-script.md): the demo video script, shot by shot
 - [docs/upstream-reports.md](docs/upstream-reports.md): issues found in Sputnik DAO, near-sdk and 1Click, with reproductions
 - [contracts/res/README.md](contracts/res/README.md): where each wasm comes from
 

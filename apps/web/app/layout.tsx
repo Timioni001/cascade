@@ -8,7 +8,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 
 export const metadata: Metadata = {
   title: "Cascade: get paid in any coin, receive dollars",
-  description: "Checkout for NEAR Intents. Customers pay with any coin on any chain; you receive exact USDC on NEAR.",
+  description: "Payments infrastructure on NEAR: checkout, invoices, point of sale, payouts and AI agent payments. Customers pay with any coin on any chain; you receive exact USDC.",
 };
 
 export const viewport: Viewport = {
@@ -23,6 +23,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
+      <head>
+        {/* Applies the saved theme before first paint, so the page never flashes the wrong one. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("cascade-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}` }} />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Building2, Check, Copy, FlaskConical, Loader2 } from "lucide-react";
 import { API } from "../../lib/api";
-import { DemoBanner, Nav } from "../components/ui";
+import { Nav } from "../components/ui";
 
 type Sandbox = { merchant: { name: string; account: string }; secretKey: string; accountKey: string; network: string };
 
@@ -148,7 +148,6 @@ function LiveCard() {
 export default function Start() {
   return (
     <div className="page">
-      <DemoBanner />
       <Nav />
       <main className="container stack-lg" style={{ padding: "56px 24px 72px" }}>
         <div className="stack" style={{ maxWidth: 720 }}>

@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { DemoBanner, Nav } from "../components/ui";
+import { Nav } from "../components/ui";
 
 const blocks: { title: string; body: string; code: string }[] = [
   {
@@ -68,7 +68,6 @@ const endpoints: [string, string, string][] = [
 export default function Developers() {
   return (
     <div className="page">
-      <DemoBanner />
       <Nav />
       <main className="container stack-lg" style={{ padding: "56px 24px 72px", maxWidth: 980 }}>
         <div className="stack" style={{ maxWidth: 720 }}>

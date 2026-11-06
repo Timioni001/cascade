@@ -3,7 +3,7 @@ import {
   ArrowRight, ArrowUpRight, Bot, Building2, Check, Coins, FileCheck2, Lock, Plug, QrCode, Repeat2, ScrollText, ShieldCheck, Split, Store, Undo2, Users, Zap,
 } from "lucide-react";
 import { DotOrb } from "./components/DotOrb";
-import { CoinMark, DemoBanner, Mark, Nav } from "./components/ui";
+import { CoinMark, Mark, Nav } from "./components/ui";
 
 const steps = [
   { n: "01", title: "They pick a coin", body: "ETH on Base, SOL, BTC, USDC on Arbitrum… whatever they already hold, from the wallet they already use, or by scanning a QR code." },
@@ -65,28 +65,26 @@ const session = await cascade.checkout.create({
 // browser: openCheckout({ sessionUrl: session.url })
 // webhook: verifyWebhook(body, header, secret) -> ship it`;
 
-/** The hero's product shot: a checkout card in front of the cascade of dots. */
+/**
+ * The hero: the cascade of dots, and what comes out of it. Monochrome on
+ * purpose: no coin logos, no colour except a payment's status.
+ */
 function HeroPreview() {
   return (
-    <div className="hero-preview hide-mobile" aria-hidden="true">
-      <div className="hero-orb"><DotOrb size={500} /></div>
-      <div className="card raised hero-card">
-        <div className="row-start" style={{ gap: 12 }}>
-          <span className="brand-mark" style={{ width: 34, height: 34, borderRadius: 10, fontWeight: 700 }}>O</span>
-          <div><div style={{ fontWeight: 600 }}>Oakline Ceramics</div><div className="tiny muted">Stoneware mug</div></div>
+    <div className="hero-preview" aria-hidden="true">
+      <div className="globe">
+        <DotOrb size={460} points={2600} />
+        <div className="globe-chip chip-paid">
+          <span className="net-dot" />
+          <span><strong>$25.00</strong> USDC received</span>
         </div>
-        <div className="num" style={{ fontSize: 40, fontWeight: 600, letterSpacing: "-0.04em", margin: "18px 0 14px" }}>$25.00</div>
-        <div className="grid-2" style={{ gap: 8 }}>
-          {[["ETH", "eth", "Base"], ["SOL", "sol", "Solana"], ["USDC", "arb", "Arbitrum"], ["BTC", "btc", "Bitcoin"]].map(([s, c, n], i) => (
-            <div key={s} className="row-start" style={{ gap: 8, padding: 10, borderRadius: 12, border: `1px solid ${i === 0 ? "var(--ink)" : "var(--line)"}`, background: "var(--card)" }}>
-              <CoinMark symbol={s!} chain={c!} size={26} /><div><div className="small" style={{ fontWeight: 600 }}>{s}</div><div className="tiny muted">{n}</div></div>
-            </div>
-          ))}
+        <div className="globe-chip chip-receipt">
+          <span className="stub-perf" />
+          <FileCheck2 size={14} />
+          <span>Receipt #128 on NEAR</span>
+          <Check size={13} />
         </div>
-        <div className="btn block" style={{ marginTop: 14 }}><Mark size={14} /> Pay 0.0111 ETH</div>
       </div>
-      <div className="hero-chip hero-chip-paid"><span className="badge ok">Paid</span> $25.00 USDC received</div>
-      <div className="hero-chip hero-chip-receipt"><FileCheck2 size={14} /> Receipt #128 on NEAR</div>
     </div>
   );
 }
@@ -94,7 +92,6 @@ function HeroPreview() {
 export default function Home() {
   return (
     <div className="page">
-      <DemoBanner />
       <Nav />
 
       <section className="container hero">
@@ -187,7 +184,7 @@ export default function Home() {
         <div className="grid-3">
           {[
             { t: "Sandbox", p: "Free", d: "Every product, test keys, real testnet contracts.", f: ["Instant account", "Dashboard and point of sale", "Webhooks and receipts"] },
-            { t: "Live", p: "0.3%", d: "Per payment, paid by the customer on top of your price. You receive the exact amount.", f: ["No monthly fee", "No gas for you or your team", "Settles in USDC"] },
+            { t: "Live", p: "0.5%", d: "Per payment, paid by the customer on top of your price. You receive the exact amount, with no monthly fee and nothing per transaction.", f: ["Cards cost about 2.9% + $0.30", "No gas for you or your team", "Settles in USDC"] },
             { t: "Scale", p: "Talk to us", d: "Volume pricing, private payments and dedicated support.", f: ["Custom fee", "Confidential payments", "Priority review"] },
           ].map((x, i) => (
             <div key={x.t} className="card stack-lg" style={i === 1 ? { borderColor: "var(--ink)" } : undefined}>
