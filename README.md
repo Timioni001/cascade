@@ -1,6 +1,8 @@
 # Cascade
 
-Checkout for NEAR Intents: let anyone pay you with any coin on any chain, and receive exactly the US dollars you asked for (USDC on NEAR), in your own account or your team's DAO. People pay through a button; AI agents pay through HTTP 402.
+![Cascade: get paid in any coin, receive dollars](docs/media/cascade-coming-soon-1600x900.png)
+
+Payments infrastructure on NEAR: let anyone pay you with any coin on any chain, and receive exactly the US dollars you asked for (USDC on NEAR), in your own account or your team's DAO. People pay through a button; AI agents pay through HTTP 402.
 
 A small ceramics studio sells a $25 mug to a customer abroad who holds ETH on Base. Card processing is slow and expensive to set up in much of the world; plain crypto means telling the customer which coin, which chain and which address, and then checking a block explorer by hand. With Cascade the shop adds one button. The customer picks the coin they already have and pays from their wallet (or scans a QR code); the shop receives exactly $25.00 in USDC on NEAR, an on-chain receipt anyone can verify, and a signed webhook that tells its server to ship. Sales can be split automatically with collaborators or a DAO, refunds go back in the customer's own coin, and an AI agent can buy from the shop's API the same way. Cascade never holds the shop's money: NEAR Intents delivers it straight to the shop's account, its DAO, or an on-chain split. The same rails let a freelancer invoice a client and a team run payroll after its DAO approves, with no network fees for anyone.
 
@@ -67,6 +69,25 @@ const readOnly = await cascade.merchant.keys.create({ role: "read", label: "Acco
 | **Developers** | | [`/developers`](https://cascade.timioni1490.workers.dev/developers): quickstart, API reference, webhooks, x402, MCP. |
 
 Live testnet deployment: **[cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev)**: [demo shop](https://cascade.timioni1490.workers.dev/shop), [point of sale](https://cascade.timioni1490.workers.dev/pos), [dashboard](https://cascade.timioni1490.workers.dev/dashboard).
+
+## Product tour
+
+| | |
+| --- | --- |
+| ![Landing](docs/media/screens/landing.png) | ![Checkout: pick a coin, scan or pay from a wallet](docs/media/screens/checkout.png) |
+| **Landing.** Start free in the sandbox or apply for live access. | **Checkout.** Any coin on any chain, QR or wallet; the merchant receives exact dollars. |
+| ![Point of sale](docs/media/screens/pos.png) | ![Point of sale, paid](docs/media/screens/pos-paid.png) |
+| **Point of sale.** Type an amount; the customer scans and pays. | **Paid.** Confirmed when the money arrives, with an on-chain receipt. |
+| ![Dashboard](docs/media/screens/dashboard.png) | ![Hosted invoice](docs/media/screens/invoice.png) |
+| **Dashboard.** Balance, revenue, payments, refunds. | **Invoices.** Line items, due dates, pay with any coin. |
+| ![Subscriptions](docs/media/screens/subscriptions.png) | ![Payouts](docs/media/screens/payouts.png) |
+| **Subscriptions.** Plans, renewals, prepaid periods. | **Payouts.** One batch, every recipient on their own chain. |
+| ![Escrow](docs/media/screens/escrow.png) | ![Agent budgets](docs/media/screens/agents.png) |
+| **Escrow.** Held by the contract, released per milestone. | **Agents.** Budgets with on-chain limits, MCP for assistants. |
+| ![Sandbox sign-up](docs/media/screens/start.png) | ![Receipt](docs/media/screens/receipt.png) |
+| **Sandbox in seconds.** A real testnet account with keys. | **Receipt.** Four checks recomputed from the chain. |
+
+<p align="center"><img src="docs/media/screens/mobile-shop.png" width="260" alt="Shop on a phone" /> <img src="docs/media/screens/mobile-checkout.png" width="260" alt="Checkout on a phone" /></p>
 
 ## Try it locally
 
