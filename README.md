@@ -104,7 +104,7 @@ pnpm worker:local   # the same, running inside the real Cloudflare Worker runtim
 
 1. Open http://localhost:3000/shop. You see the demo shop, "Oakline Ceramics", already onboarded as a merchant on the local chain.
 2. Press **Pay with any crypto**. The Cascade checkout opens in a modal (an iframe on the Cascade origin).
-3. Pick **ETH on Base**. You see the exact ETH amount for $25.00 from a (mock) quote, and that the price includes a 0.3% fee while the shop receives exactly $25.00.
+3. Pick **ETH on Base**. You see the exact ETH amount for $25.00 from a (mock) quote, and that the price includes the 0.5% fee while the shop receives exactly $25.00.
 4. Paste any address as your refund address and press **Get payment address**. You see a one-time deposit address and a QR code your phone wallet can scan. With a browser wallet such as MetaMask installed, **Pay with wallet** sends the transaction instead.
 5. Press **Simulate the payment (sandbox)**. Within a few seconds the checkout shows **Paid**; **Verify receipt** opens a page with four green checks recomputed from the chain.
 6. Press Escape. The shop page now says **Order … paid. Shipping soon.** That status comes from the shop's own server, which verified the signed webhook.

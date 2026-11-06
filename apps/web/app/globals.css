@@ -311,3 +311,11 @@ button { font: inherit; color: inherit; }
 /* The coin logos ship black; dark mode flips them to white. */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); } }
 :root[data-theme="dark"] .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); }
+
+/* ---------- operator view (/admin, unlinked) */
+.admin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.admin-scroll { overflow-x: auto; }
+.admin-scroll .table { min-width: 760px; }
+.admin-wrap { max-width: 360px; white-space: pre-wrap; }
+.admin-title { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; }
+.wallet-bar { flex-wrap: wrap; gap: 10px; }

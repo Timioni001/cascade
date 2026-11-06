@@ -57,7 +57,8 @@ Set by `cf:configure`; listed here for reference.
 | `CASCADE_PUBLIC_URL` | var | This deployment's URL. Checkout links, the relayer's allowed origin, and the origin whose calls stay in-process |
 | Contract ids (`CASCADE_APP_ID`, ...) | vars | From `deployments/<network>.json` |
 | `CASCADE_ONECLICK` | var | `live`, or `mock` for the testnet demo (simulated swaps that mint testnet mock USDC; refused on mainnet) |
-| `CASCADE_FEE_BPS`, `CASCADE_FEE_RECIPIENT` | vars | Optional Cascade fee (0-200 bps), paid by the customer |
+| `CASCADE_FEE_BPS`, `CASCADE_FEE_RECIPIENT` | vars | Cascade fee (0-200 bps; the published price is 50 = 0.5%), paid by the customer |
+| `CASCADE_ADMIN_TOKEN` | secret | Turns on the unlinked operator view at `/admin` (stats, applications, merchants). At least 24 characters: `openssl rand -hex 24` |
 | `NEAR_RPC_URL` | var | Optional; default FastNEAR |
 | `RELAYER_PRIVATE_KEY`, `SETTLER_PRIVATE_KEY` | secrets | Written to `.env` by `pnpm deploy:cascade` |
 | `CASCADE_ROOT_PRIVATE_KEY` | secret | Demo mode only: the mock USDC minter (a testnet key) |

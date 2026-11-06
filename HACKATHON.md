@@ -54,6 +54,7 @@ Most of the code was written by Claude Code (Anthropic) working with the team le
 | hono, @hono/node-server | 4.12.34, 2.1.5 | HTTP routing for the platform (Worker and Node server) |
 | next, react, react-dom | 15.5.28, 19.1.10 | Web app (static export): checkout, receipts, dashboard, demo shop |
 | qrcode | 1.5.4 | QR codes for wallet payment links |
+| @hot-labs/near-connect | 0.11.4 | NEAR wallet connector in the dashboard (HOT, Meteor, Intear, MyNearWallet, OKX…): the merchant's own wallet signs escrow releases, agent budgets and payout changes. MIT, loaded only when a signature is needed |
 | wrangler (Cloudflare) | 4.151.2 | Builds, runs locally and deploys the Worker (D1, cron) |
 | lucide-react | 1.59.0 | Icons |
 | Geist, Geist Mono (via next/font) | | Typeface |

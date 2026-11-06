@@ -143,9 +143,9 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
     limits: { namesPerIp: { max: 100, windowMs: 86_400_000 }, relayPerIp: { max: 10_000, windowMs: 3_600_000 }, relayPerAccount: { max: 1_000, windowMs: 3_600_000 } },
   });
   const sink: RelaySink = { relay: (b64) => relayer.relay(b64, { ip: "127.0.0.1" }) };
-  // 0.3% Cascade fee, paid by customers into an Intents account (shown on the checkout page).
+  // 0.5% Cascade fee (the published price), paid by customers into an Intents account (shown on the checkout page).
   const checkout = new Checkout({
-    store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000", fee: { recipient: ids.factory, bps: 30 }, usdc: ids.usdc, relayer: ids.relayer,
+    store, oneclick, chain, app: ids.app, publicUrl: opts.publicUrl ?? "http://localhost:3000", fee: { recipient: ids.factory, bps: 50 }, usdc: ids.usdc, relayer: ids.relayer,
   });
   const refunds = new Refunds(checkout);
   const billing = new Billing(checkout);
@@ -202,7 +202,7 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
       RELAYER_ACCOUNT_ID: ids.relayer, RELAYER_PRIVATE_KEY: keys.get(ids.relayer)!.toString(),
       SETTLER_ACCOUNT_ID: ids.settler, SETTLER_PRIVATE_KEY: keys.get(ids.settler)!.toString(),
       CASCADE_ONECLICK: "mock", CASCADE_ROOT_ID: ids.solver, CASCADE_ROOT_PRIVATE_KEY: keys.get(ids.solver)!.toString(),
-      CASCADE_FEE_BPS: "30", CASCADE_FEE_RECIPIENT: ids.factory,
+      CASCADE_FEE_BPS: "50", CASCADE_FEE_RECIPIENT: ids.factory,
     }),
     freeze: async (a) => {
       expectOk(await chain.send(solver, ftCalls(ids.usdc).setBlocked(a, true)), "freeze");

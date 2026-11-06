@@ -335,7 +335,7 @@ export default function Dashboard() {
           {tab === "customers" && <CustomersTab secret={key} onError={setError} />}
           {tab === "payouts" && <PayoutsTab secret={key} onError={setError} />}
           {tab === "escrow" && me && <EscrowTab secret={key} account={me.account} onError={setError} />}
-          {tab === "agents" && <AgentsTab secret={key} onError={setError} />}
+          {tab === "agents" && <AgentsTab secret={key} account={me?.account ?? ""} onError={setError} />}
           {tab === "settings" && me && <SettingsTab secret={key} payout={me.payout} account={me.account} onError={setError} />}
 
           {tab === "webhooks" && (

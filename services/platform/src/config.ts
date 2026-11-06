@@ -34,6 +34,8 @@ export interface ServerConfig {
   settlerIntervalMs: number;
   /** The built-in demo shop's merchant credentials (`pnpm demo-merchant` prints them). Null: the shop answers 503. */
   shop: { secretKey: string; webhookSecret: string } | null;
+  /** Bearer token for /api/admin (a secret). Null: the admin API answers 404. */
+  adminToken: string | null;
 }
 
 const RPC = { mainnet: "https://rpc.mainnet.fastnear.com", testnet: "https://rpc.testnet.fastnear.com" };
@@ -89,6 +91,7 @@ export function parseConfig(env: Env, dep: Deployment = {}, depLabel = "deployme
     trustProxy: env.TRUST_PROXY === "1",
     settlerIntervalMs: Number(env.SETTLER_INTERVAL_MS ?? 5000),
     shop: shopConfig(env),
+    adminToken: adminToken(env),
   };
 }
 
@@ -98,4 +101,11 @@ function shopConfig(env: Env): ServerConfig["shop"] {
   if (!secretKey && !webhookSecret) return null;
   if (!secretKey?.startsWith("sk_") || !webhookSecret) throw new ConfigError("set both CASCADE_SHOP_SECRET_KEY (sk_...) and CASCADE_SHOP_WEBHOOK_SECRET, or neither");
   return { secretKey, webhookSecret };
+}
+
+function adminToken(env: Env): string | null {
+  const t = env.CASCADE_ADMIN_TOKEN?.trim();
+  if (!t) return null;
+  if (t.length < 24) throw new ConfigError("CASCADE_ADMIN_TOKEN must be at least 24 characters (openssl rand -hex 24)");
+  return t;
 }

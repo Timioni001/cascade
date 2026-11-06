@@ -33,7 +33,7 @@ One Worker serves everything (pages, API, relayer, demo shop) with D1 as the dat
 
 ```
 CASCADE_ONECLICK=mock        # testnet only; the platform refuses it on mainnet
-CASCADE_FEE_BPS=30           # optional: shows the fee line in checkout
+CASCADE_FEE_BPS=50           # 0.5%, the published price
 CASCADE_FEE_RECIPIENT=<root>.testnet
 ```
 

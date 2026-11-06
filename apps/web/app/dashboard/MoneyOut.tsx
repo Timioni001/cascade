@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Bot, ExternalLink, Lock, Send } from "lucide-react";
 import { Badge, chainName, usd, type Tone } from "../components/ui";
 import { call } from "./api";
+import { callContract, getDeployment } from "../../lib/wallet";
+import { useWallet, WalletBar } from "./Wallet";
 
 type Props = { secret: string; onError: (m: string | null) => void };
 /** Mirrors of the contract's views (contracts/app/src/vault.rs). */
@@ -92,8 +94,24 @@ export function PayoutsTab({ secret, onError }: Props) {
 const msTone = (s: string): Tone => (s === "Released" ? "ok" : s === "Refunded" ? "neutral" : s === "Pending" ? "warn" : "neutral");
 
 export function EscrowTab({ secret, account, onError }: Props & { account: string }) {
-  const { data } = useList<Escrow>(secret, "merchant/escrows", onError);
+  const { data, load } = useList<Escrow>(secret, "merchant/escrows", onError);
   const [links, setLinks] = useState<Record<number, string>>({});
+  const wallet = useWallet();
+  const [pending, setPending] = useState<string | null>(null);
+
+  async function settle(e: Escrow, idx: number, method: "release_milestone" | "refund_milestone") {
+    onError(null);
+    setPending(`${e.id}:${idx}`);
+    try {
+      const { app } = await getDeployment();
+      await callContract({ contract: app, method, args: { id: e.id, idx }, tgas: 150 });
+      await load();
+    } catch (err) {
+      onError((err as Error).message);
+    } finally {
+      setPending(null);
+    }
+  }
 
   async function fundingLink(e: Escrow) {
     onError(null);
@@ -117,6 +135,7 @@ export function EscrowTab({ secret, account, onError }: Props & { account: strin
   }
   return (
     <div className="stack-lg">
+      <WalletBar wallet={wallet} onError={onError} why="Connect the client's or arbiter's NEAR wallet to release or refund a milestone." />
       {data.map((e) => {
         const released = e.milestones.filter((m) => m.status === "Released").reduce((t, m) => t + BigInt(m.amount), 0n);
         const held = e.status === "Funded" ? e.milestones.filter((m) => m.status === "Pending" || m.status === "Releasing" || m.status === "Refunding").reduce((t, m) => t + BigInt(m.amount), 0n) : 0n;
@@ -137,9 +156,24 @@ export function EscrowTab({ secret, account, onError }: Props & { account: strin
             </div>
             <table className="table">
               <tbody>
-                {e.milestones.map((m, i) => (
-                  <tr key={i}><td>{i + 1}. {m.title}</td><td><Badge tone={msTone(m.status)}>{m.status.toLowerCase()}</Badge></td><td className="num" style={{ textAlign: "right" }}>{usd(m.amount)}</td></tr>
-                ))}
+                {e.milestones.map((m, i) => {
+                  const w = wallet.account;
+                  const open = e.status === "Funded" && m.status === "Pending" && !!w;
+                  const canRelease = open && (w === e.payer || w === e.arbiter);
+                  const canRefund = open && (w === e.payee || w === e.arbiter || Date.now() >= e.refund_after_ms);
+                  const busy = pending === `${e.id}:${i}`;
+                  return (
+                    <tr key={i}>
+                      <td>{i + 1}. {m.title}</td>
+                      <td><Badge tone={msTone(m.status)}>{m.status.toLowerCase()}</Badge></td>
+                      <td className="num" style={{ textAlign: "right" }}>{usd(m.amount)}</td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        {canRelease && <button className="btn sm" disabled={busy} onClick={() => settle(e, i, "release_milestone")}>{busy ? "Signing…" : "Release"}</button>}
+                        {canRefund && <button className="btn ghost sm" disabled={busy} onClick={() => settle(e, i, "refund_milestone")} style={{ marginLeft: 6 }}>Refund</button>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {e.status === "AwaitingFunds" && youArePayee && (
@@ -156,9 +190,51 @@ export function EscrowTab({ secret, account, onError }: Props & { account: strin
 
 // ------------------------------------------------------------ agent budgets
 
-export function AgentsTab({ secret, onError }: Props) {
-  const { data } = useList<Allowance>(secret, "merchant/agents", onError);
+export function AgentsTab({ secret, account, onError }: Props & { account: string }) {
+  const { data, load } = useList<Allowance>(secret, "merchant/agents", onError);
   const today = Math.floor(Date.now() / 86_400_000);
+  const wallet = useWallet();
+  const [form, setForm] = useState({ agent: "", perPayment: "5", daily: "20", days: "30", fund: "20", purpose: "" });
+  const [working, setWorking] = useState<string | null>(null);
+  const units = (v: string) => String(Math.round(Number(v) * 1_000_000));
+
+  async function run(label: string, steps: () => Promise<void>) {
+    onError(null);
+    setWorking(label);
+    try {
+      await steps();
+      await load();
+    } catch (err) {
+      onError((err as Error).message);
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  const setBudget = () => run("set", async () => {
+    const agent = form.agent.trim();
+    if (!agent) throw new Error("enter the agent's NEAR account");
+    if (!(Number(form.perPayment) > 0 && Number(form.daily) >= Number(form.perPayment))) throw new Error("the daily limit must be at least the per-payment limit");
+    const { app, usdc } = await getDeployment();
+    const expires = Date.now() + Math.max(1, Number(form.days)) * 86_400_000;
+    await callContract({
+      contract: app, method: "set_allowance",
+      args: { agent, policy: { per_payment_max: units(form.perPayment), daily_max: units(form.daily), expires_at_ms: expires, payees: [] }, ...(form.purpose.trim() ? { purpose: form.purpose.trim().slice(0, 140) } : {}) },
+    });
+    if (Number(form.fund) > 0) {
+      await callContract({ contract: usdc, method: "ft_transfer_call", deposit: "1", tgas: 150, args: { receiver_id: app, amount: units(form.fund), msg: JSON.stringify({ allowance: agent }) } });
+    }
+  });
+  const revoke = (agent: string) => run(agent, async () => {
+    const { app } = await getDeployment();
+    await callContract({ contract: app, method: "revoke_allowance", args: { agent }, tgas: 150 });
+  });
+  const field = (k: keyof typeof form, label: string, extra: Record<string, string> = {}) => (
+    <label className="stack" style={{ gap: 4 }}>
+      <span className="tiny muted">{label}</span>
+      <input className="input" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} {...extra} />
+    </label>
+  );
   return (
     <div className="stack-lg">
       <div className="card stack">
@@ -171,7 +247,7 @@ export function AgentsTab({ secret, onError }: Props) {
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="table">
-              <thead><tr><th>Agent</th><th>Limits</th><th>Today</th><th>Status</th><th style={{ textAlign: "right" }}>Balance</th></tr></thead>
+              <thead><tr><th>Agent</th><th>Limits</th><th>Today</th><th>Status</th><th style={{ textAlign: "right" }}>Balance</th><th /></tr></thead>
               <tbody>
                 {data.map((a) => {
                   const spentToday = a.day === today ? BigInt(a.spent_today) : 0n;
@@ -188,6 +264,11 @@ export function AgentsTab({ secret, onError }: Props) {
                       </td>
                       <td><Badge tone={active ? "ok" : "neutral"}>{a.revoked ? "revoked" : active ? "active" : "expired"}</Badge><div className="tiny muted" style={{ marginTop: 4 }}>{a.payments} payment{a.payments === 1 ? "" : "s"} · {usd(a.total_spent)} total</div></td>
                       <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{usd(a.balance)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {!a.revoked && wallet.account === account && (
+                          <button className="btn ghost sm" disabled={working === a.agent} onClick={() => revoke(a.agent)}>{working === a.agent ? "Signing…" : "Revoke"}</button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -195,6 +276,24 @@ export function AgentsTab({ secret, onError }: Props) {
             </table>
           </div>
         )}
+      </div>
+      <div className="card stack">
+        <div className="h2">Give an agent a budget</div>
+        <WalletBar wallet={wallet} owner={account} onError={onError} why={`Your wallet (${account}) signs the limits; the contract then enforces them.`} />
+        <div className="grid-3">
+          {field("agent", "Agent NEAR account", { placeholder: "agent.example.testnet", autoComplete: "off", spellCheck: "false" })}
+          {field("perPayment", "Max per payment (USDC)", { inputMode: "decimal" })}
+          {field("daily", "Max per day (USDC)", { inputMode: "decimal" })}
+          {field("days", "Valid for (days)", { inputMode: "numeric" })}
+          {field("fund", "Fund now (USDC, 0 to skip)", { inputMode: "decimal" })}
+          {field("purpose", "Purpose, shown on receipts", { placeholder: "Buy market data for the weekly report", maxLength: "140" })}
+        </div>
+        <div className="row-start">
+          <button className="btn" disabled={!wallet.account || wallet.account !== account || working === "set"} onClick={setBudget}>
+            {working === "set" ? "Waiting for your wallet…" : Number(form.fund) > 0 ? "Sign limits and fund" : "Sign limits"}
+          </button>
+          <span className="tiny muted">{Number(form.fund) > 0 ? "Two signatures: the limits, then the USDC transfer into the budget." : "One signature."}</span>
+        </div>
       </div>
       <div className="card stack">
         <div className="h2">Connect an assistant</div>

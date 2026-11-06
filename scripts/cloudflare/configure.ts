@@ -62,6 +62,7 @@ const secrets: Record<string, string> = {
   SETTLER_PRIVATE_KEY: cfg.settler.key,
   ...(cfg.oneclick.mode === "mock" ? { CASCADE_ROOT_PRIVATE_KEY: cfg.oneclick.minter.key } : {}),
   ...(cfg.oneclickJwt ? { ONECLICK_JWT: cfg.oneclickJwt } : {}),
+  ...(cfg.adminToken ? { CASCADE_ADMIN_TOKEN: cfg.adminToken } : {}),
   ...(cfg.shop ? { CASCADE_SHOP_SECRET_KEY: cfg.shop.secretKey, CASCADE_SHOP_WEBHOOK_SECRET: cfg.shop.webhookSecret } : {}),
 };
 

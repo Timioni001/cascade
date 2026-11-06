@@ -74,6 +74,9 @@ importers:
       '@cascade/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@hot-labs/near-connect':
+        specifier: 0.11.4
+        version: 0.11.4
       lucide-react:
         specifier: 1.59.0
         version: 1.59.0(@types/react@19.1.17)(react@19.1.10)
@@ -555,6 +558,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
+
+  '@hot-labs/near-connect@0.11.4':
+    resolution: {integrity: sha512-exAL1gqysyCHewcMO334YJ3ddTPg3j9EyVM9novz5Jx4fLbG/YSYBlkYMjMNB8E9K/4I7BiemjOw9bQ+h80hEA==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -1981,6 +1987,8 @@ snapshots:
   '@hono/node-server@2.1.5(hono@4.12.34)':
     dependencies:
       hono: 4.12.34
+
+  '@hot-labs/near-connect@0.11.4': {}
 
   '@img/colour@1.1.0': {}
 

@@ -1,36 +1,50 @@
-# Demo video script
+# Demo video brief
 
-**Target: 2:00.** Check the official submission page for the limit before recording: my notes from nearhackathon.com (2026-11-03) list the repo, tags, disclosures and licence, but no video length. Past NEAR events asked for about 3 minutes, and other hackathons use 2 to 5. Two minutes is safe for all of them, and §B below adds 45 seconds if you have 3.
+A brief to refine, not a script to read. The official rules (nearhackathon.com/HACKATHON.md, checked 2026-11-06) set **no video length or format**. The video goes on the X demo post, so aim for **about 2 minutes**: short enough to watch in full in the feed.
 
-Record at 1920×1080, browser zoom 100%, no bookmarks bar. Have these open as tabs in this order, all logged in and warmed up: `/`, `/shop`, `/pos`, `/dashboard`, a terminal.
+## What the post must have (official rules)
 
-| # | Time | On screen | What you say |
-| --- | --- | --- | --- |
-| 1 | 0:00–0:12 | Landing hero. Let the coins orbit once, then scroll to the products grid and back. | "Crypto payments are still a mess for businesses. Which coin, which chain, which address, then reconcile it by hand. Cascade is payments infrastructure on NEAR that makes it one button." |
-| 2 | 0:12–0:30 | `/shop`. Click **Pay with any crypto**. Pick **ETH on Base**. Point at the fee line and the amount. | "A real shop. The customer pays with whatever they already hold: ETH on Base, SOL, Bitcoin, 200+ coins on 35+ chains. They see the exact price, the shop receives exactly twenty-five dollars." |
-| 3 | 0:30–0:45 | Paste the refund address, **Get payment address**, show the QR, click **Simulate the payment**. Wait for **Payment complete**. | "NEAR Intents converts and delivers it. No bridge to pick, no gas token to buy. If anything fails, the customer is refunded automatically on their own chain." |
-| 4 | 0:45–0:58 | Click **Verify receipt**. Show the four green checks, then the shop tab now reading **Order paid**. | "Every payment leaves a receipt on NEAR that anyone can verify: recorded on chain, bound to this exact order, same one-time address, delivered. The shop ships because a signed webhook said so, not because a browser did." |
-| 5 | 0:58–1:12 | `/pos`. Type **12.50**, **Charge**, show the QR, switch to the phone-sized window, pay, land on the green **Paid** screen. | "The same rails in person. Type an amount, the customer scans, and it turns green when the money has actually arrived. That is a point of sale for any coin, with no terminal to buy." |
-| 6 | 1:12–1:30 | `/dashboard`: Overview, then **Invoices**, **Subscriptions**, then **Payouts** (expand a batch) and **Escrow**. | "And the operations around the money: invoices and subscriptions, payouts to fifty people each on their own chain after a DAO vote, and milestone escrow the contract holds and releases when the client approves." |
-| 7 | 1:30–1:45 | **Agents** tab, then the terminal: `pnpm agent`, showing the 402 and the paid response. | "AI agents get their own budget, with per-payment and daily limits the NEAR contract enforces. The agent pays an x402 API with no gas and no wallet pop-up, and the receipt shows who authorised it and for what." |
-| 8 | 1:45–2:00 | Split screen: the mainnet links in the README's Proof section, then the landing page with **Start free**. | "This is live on testnet today, with real mainnet payments through 1Click as proof. Anyone can create a sandbox account in ten seconds and start building. Cascade: get paid in any coin, receive dollars." |
+- Posted by you from your own X account.
+- Says it was built at NEAR HACKATHON.
+- Tags **@NEARProtocol** and **#NEARHackathon**. @NearLegion and @NearBuilders are optional.
+- Has the video (or screenshots) attached.
+- The URL of this post goes in the submission form.
 
-## §B. The extra 45 seconds, if the limit is 3 minutes
+## The one message
 
-Insert after step 6.
+**Get paid in any coin, on any chain, and receive dollars. Every payment leaves a receipt on NEAR that anyone can check.**
 
-| Time | On screen | What you say |
-| --- | --- | --- |
-| +0:15 | Dashboard **Settings**: the payout destination and the read-only key. | "Settle where you want: USDC on NEAR, Ethereum, Base, Arbitrum or Solana. Changing that needs a signature from your own NEAR account, so a leaked API key cannot redirect your money. Your accountant gets a read-only key." |
-| +0:15 | Terminal: `pnpm demo` scrolling to **All checks passed**. | "Everything you just saw runs end to end on a real NEAR node, with thirty-eight checks in the repo: splits, refunds, DAO payroll, escrow and agent limits." |
-| +0:15 | Claude or Cursor with the Cascade MCP server: ask it to invoice a customer, then to buy a paid API. | "And because it speaks MCP, an assistant can run the account and spend the budget: 'invoice Fieldwork Café for twenty-four mugs', or buy an API within the limits you set." |
+## Beats (pick, reorder, cut)
 
-## Tips
+| # | Show | Point to land |
+|---|---|---|
+| 1 | Landing hero | The problem in one line: crypto payments are a mess for businesses. |
+| 2 | `/shop`, pay with ETH on Base | The customer pays with what they hold; the shop gets exactly $25. |
+| 3 | Payment complete, then **Verify receipt** | NEAR Intents does the conversion; the receipt on NEAR proves it. |
+| 4 | `/pos` on a phone | Same rails in person: type, scan, green. |
+| 5 | Dashboard: invoices, subscriptions, payouts, escrow | The money operations a business needs, Stripe-style. |
+| 6 | **Escrow → Release** or **Agents → Sign limits** with a real wallet pop-up | The merchant's own NEAR wallet signs; Cascade never holds the key. |
+| 7 | Terminal: `pnpm agent` (402, then paid) | AI agents pay x402 APIs within limits the contract enforces. |
+| 8 | README Proof links (mainnet txs) and **Start free** | Live on testnet, real mainnet payments as proof, a sandbox in ten seconds. |
 
-- **Record in sandbox mode.** The "Sandbox" chip in the nav is honest about simulated swaps, and the mainnet proof links cover the real-money claim.
-- **Warm every page first.** Load each tab once before recording so nothing is still fetching.
-- **Pre-fill the slow fields.** Copy the refund address `0x2527D02599Ba641c19FEa793cD0F167589a0f10D` to the clipboard before you start.
-- **Cut, don't wait.** The settler needs a few seconds; cut straight to the paid state rather than filming a spinner.
-- **Mute the terminal font below 16px.** Judges often watch at half size.
-- **Captions over claims.** When you say "mainnet", put the transaction link on screen.
-- **Last frame:** the URL and the repo, held for three seconds.
+Must-keep beats: 2, 3 and 6. They show NEAR doing work that only NEAR does here: Intents, on-chain receipts, and wallet-signed contracts.
+
+## Tone
+
+Calm, product-first, like a real startup's launch video. No "hackathon" on screen. Say "built at NEAR HACKATHON" in the post text only.
+
+## Production notes
+
+- 1920×1080, browser zoom 100%, bookmarks bar hidden, every tab loaded once before recording.
+- Record against the live testnet site. The "Testnet" chip is honest about simulated swaps; the mainnet links back the real-money claim.
+- Use a testnet wallet (MyNearWallet or Meteor) as the merchant account so beat 6 shows a real signature pop-up.
+- Cut the waits rather than film spinners. Captions for every claim, and a tx link on screen whenever you say "mainnet".
+- Last frame: the site URL and the repo URL, held for three seconds.
+
+## Draft post text
+
+> Cascade: get paid in any coin, on any chain, and receive dollars, with a receipt on NEAR for every payment. Checkout, invoices, subscriptions, POS, payouts, escrow and budgets for AI agents.
+>
+> Built at NEAR HACKATHON. @NEARProtocol #NEARHackathon
+>
+> Try it: https://cascade.timioni1490.workers.dev

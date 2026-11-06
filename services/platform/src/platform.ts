@@ -20,6 +20,7 @@ import { apiApp } from "@cascade/api";
 import { Relayer, relayerApp } from "@cascade/relayer";
 import { Settler, nearSettlerChain, type SettlerEvent } from "@cascade/settler";
 import type { ServerConfig } from "./config.js";
+import { adminApp } from "./admin.js";
 import { accessApp } from "./access.js";
 import { shopApp, type ShopOrders, MemoryShopOrders } from "./shop.js";
 
@@ -91,8 +92,9 @@ export function createPlatform(d: PlatformDeps): Platform {
 
   const ipHeader = d.ipHeader ? { ipHeader: d.ipHeader } : {};
   const app = new Hono();
-  app.get("/health", (c) => c.json({ ok: true, network: cfg.network, app: cfg.app, oneclick: mock ? "simulated" : "live" }));
+  app.get("/health", (c) => c.json({ ok: true, network: cfg.network, app: cfg.app, usdc: cfg.usdc, oneclick: mock ? "simulated" : "live" }));
   app.route("/relayer", relayerApp(relayer, { trustProxy: cfg.trustProxy, allowOrigins: cfg.allowOrigins, ...ipHeader }));
+  app.route("/api/admin", adminApp({ store, limiter, token: cfg.adminToken, network: cfg.network, feeBps: cfg.fee?.bps ?? 0, ...ipHeader }));
   app.route("/api", accessApp({ checkout, relayer, chain, app: cfg.app, store, limiter, sandbox: cfg.oneclick.mode === "mock", ...ipHeader }));
   app.route("/api/shop", shopApp({ credentials: cfg.shop, orders: d.shopOrders ?? new MemoryShopOrders(), apiUrl: cfg.publicUrl, fetch: f }));
   app.route("/", apiApp({ checkout, refunds, billing, agents: new AgentPayments(checkout), trustProxy: cfg.trustProxy, limiter, ...ipHeader, ...(mock ? { dev: { oneclick: mock } } : {}) }));
