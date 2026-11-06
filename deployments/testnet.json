@@ -1,0 +1,25 @@
+{
+  "network": "testnet",
+  "root": "cascade-tim.testnet",
+  "factory": "cascade-tim.testnet",
+  "app": "app.cascade-tim.testnet",
+  "usdc": "usdc.cascade-tim.testnet",
+  "usdcIsMock": true,
+  "relayer": "relayer.cascade-tim.testnet",
+  "settler": "settler.cascade-tim.testnet",
+  "daoFactory": "sputnikv2.testnet",
+  "codeHashes": {
+    "app": "2JfgaGcB6JCfpg2ANAbycGpAkSsWm9G5km27i9mxn3RV",
+    "factory": "3YtNbkuyEo8kSzneaB9mPkoFLht61TwfwSaoMc3b3Kez",
+    "mockUsdc": "8NnqSQbPcA5t4Vy97ZKKVhZNTJEuJdQhz7BJMgtXEb3v"
+  },
+  "appLocked": true,
+  "transactions": {
+    "create relayer account": "13jmdA481DWH9gbhQrddaLpZg9atZnaR4eQqi62oXvM2",
+    "create settler account": "5P4vxrKzShT91Ria9Tb9rLKmUvSGNuG9d1HcPXi8mYuJ",
+    "create mock USDC": "Ah2KB4kya3YLofbkYEGMGsHJy8FqBAcBRu1bVSSr8VbH",
+    "create, deploy and init app (locked: no access key)": "6RdJE7AVd6WabgxK4qnxump1UsDCLRdKk5LVWiEBLiKG",
+    "deploy and init name factory": "GFAdkFsNj93H3XuFzMpDCFrYg4gULAMXsGfzTjYQGock"
+  },
+  "updatedAt": "2026-11-05T23:27:43.334Z"
+}
