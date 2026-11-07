@@ -2,6 +2,24 @@
 
 Payments infrastructure on NEAR. A business is paid in any coin on any chain and receives the exact amount it asked for in USDC. Every payment leaves a receipt on NEAR that anyone can verify. Checkout, point of sale, invoices, subscriptions, payouts, DAO payroll, revenue splits, milestone escrow, refunds, and payments by AI agents (x402 and MCP).
 
+## Judge quickstart (2 minutes, nothing to install)
+
+| # | Do | See |
+| --- | --- | --- |
+| 1 | Open [the demo shop](https://cascade.timioni1490.workers.dev/shop) → **Pay with any crypto** → pick **ETH on Base** | The exact ETH price, the 0.5% fee, and "Oakline Ceramics receives $25.00" |
+| 2 | Enter any Base address → **Get payment address** → **Simulate the payment** | **Payment complete** within seconds (testnet: the swap is simulated, everything else is real) |
+| 3 | Press **Verify receipt** | Four checks recomputed from NEAR, with the transaction link |
+| 4 | Open [the dashboard](https://cascade.timioni1490.workers.dev/dashboard) with the read-only demo key below | A merchant's payments, invoices, subscriptions and customers (read-only: changes are refused) |
+| 5 | [Create your own sandbox account](https://cascade.timioni1490.workers.dev/start) | A real NEAR testnet account with your own keys, point of sale, and every dashboard feature |
+
+Read-only demo key (NEAR testnet, demo data only):
+
+```
+rk_test_NZ4wYVTNC6gYBN6xHPcAtF5K
+```
+
+Real money on mainnet: see [Proof](#proof). Run everything locally with one command: `pnpm i && pnpm demo`.
+
 ![Cascade landing page](docs/media/screens/landing.png)
 
 | | |
@@ -9,7 +27,7 @@ Payments infrastructure on NEAR. A business is paid in any coin on any chain and
 | **Live (NEAR testnet)** | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
 | **Mainnet proof** | Real payments through NEAR Intents (1Click), Base → NEAR and NEAR → Base: [Proof](#proof) |
 | **Run it locally** | `pnpm i && pnpm demo` (one command, no keys, no money, ~80 s, 38 checks) |
-| **Tests** | 95 unit · 31 on a local NEAR node · 41 Rust contract · browser end-to-end |
+| **Tests** | 97 unit · 31 on a local NEAR node · 41 Rust contract · browser end-to-end |
 | **Tracks** | Real-World Money (`realworld`), Social Money (`social`) · disclosures in [HACKATHON.md](HACKATHON.md) |
 | **License** | MIT |
 
@@ -75,7 +93,7 @@ The status column says how each feature was verified:
 | **Refunds** | Partial or full, back in the customer's coin and chain, through a hash-locked batch line | Local node |
 | **Payouts and payroll** | Up to 50 recipients, each on their own chain, in one locked batch. Chunked execution, and failed lines return to the owner | Local node. Mainnet NEAR → Base verified |
 | **DAO payroll** (`social`) | A Sputnik DAO v2 team joins through its own proposal. Payroll is one proposal with fee-free votes, and a preparer can never fund alone | Local node, with the real Sputnik v2 wasm from mainnet |
-| **Revenue splits** | e.g. 80/15/5 between a shop, an illustrator and a DAO, split on arrival with no signatures | Local node. 1Click `customRecipientMsg` on mainnet not yet tested |
+| **Revenue splits** (`social`) | e.g. 80/15/5 between a shop, an illustrator and a DAO treasury, divided by the contract on arrival. Dashboard **Splits** tab: create one with your wallet, see each share, and make a payment link that pays straight into it | Local node · browser-tested. 1Click `customRecipientMsg` on mainnet not yet tested |
 | **Milestone escrow** | Up to 20 milestones, funded by the client from any chain, released per milestone, refundable to the client after a date | Local node · release/refund buttons in the dashboard |
 | **AI agent budgets** | `set_allowance` with limits the contract enforces. The agent pays gas-free with `agent_pay`, and revoking returns the balance | Local node |
 | **x402 paywalls** | `x402Guard` returns HTTP 402 with payment options, and one payment unlocks one response. `pnpm agent` shows the full loop | Local node · Testnet |
@@ -249,8 +267,10 @@ All captured from the running app (`pnpm test:e2e`). Light and dark themes are b
 | Overview: balance, revenue, recent payments | Refund in the customer's own coin |
 | ![Invoices](docs/media/screens/invoices.png) | ![Subscriptions](docs/media/screens/subscriptions.png) |
 | Invoices | Plans and subscriptions |
-| ![Customers](docs/media/screens/customers.png) | ![Webhooks](docs/media/screens/webhooks.png) |
-| Customers | Webhook deliveries and retries |
+| ![Customers](docs/media/screens/customers.png) | ![Revenue splits](docs/media/screens/splits.png) |
+| Customers | Revenue splits: shares, a DAO treasury, payments into the split |
+| ![Webhooks](docs/media/screens/webhooks.png) | |
+| Webhook deliveries and retries | |
 | ![Reports](docs/media/screens/reports.png) | ![Settings](docs/media/screens/settings.png) |
 | Accountant CSV | Team keys and a payout chain change signed by your NEAR wallet |
 
@@ -358,14 +378,14 @@ On top of Cascade's fee, the customer pays the route cost. On the $1 mainnet tes
 | --- | --- |
 | TypeScript (non-test) | ~13,000 lines across 8 packages and 6 services |
 | Rust contracts | ~2,900 lines; app contract wasm 428,757 bytes, 38 public methods |
-| Tests | ~2,700 lines: 95 unit, 31 local-node, 41 Rust, 38 demo checks, browser e2e |
+| Tests | ~2,800 lines: 97 unit, 31 local-node, 41 Rust, 38 demo checks, browser e2e |
 | Runtime dependencies of the SDK | 0 |
 | Worker bundle | ~153 KB gzipped |
 
 ```mermaid
 %%{init: {"theme": "neutral"}}%%
 pie title Automated checks by layer
-    "TypeScript unit" : 95
+    "TypeScript unit" : 97
     "Rust contract" : 41
     "Demo checks (local NEAR node)" : 38
     "Local NEAR node tests" : 31
@@ -374,7 +394,7 @@ pie title Automated checks by layer
 ## Tests
 
 ```sh
-pnpm test:unit       # 95 TypeScript unit tests (seconds)
+pnpm test:unit       # 97 TypeScript unit tests (seconds)
 pnpm test:sandbox    # 31 tests on a local NEAR node, incl. the deploy script (~2 min)
 pnpm test            # both
 pnpm test:contracts  # 41 Rust unit tests (needs Rust)

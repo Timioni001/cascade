@@ -68,6 +68,8 @@ One deployment serves every route below on one origin (Cloudflare Worker or Node
 | GET | `/v1/merchant/payouts` | Payout batches the merchant's account owns, with recipients and status |
 | GET | `/v1/merchant/escrows` | Escrows where the merchant is payee or payer (`get_escrows_for`) |
 | GET | `/v1/merchant/agents` | Agent allowances the merchant has set (`get_allowances`) |
+| GET | `/v1/merchant/splits` | The merchant's revenue splits, read from the contract, with payments and USDC received through checkout |
+| POST | `/v1/merchant/splits` | `{id}`: add a split the merchant's account created on-chain (`create_split`). Refused unless the split exists and belongs to the merchant |
 
 ### Agents (x402)
 

@@ -18,6 +18,17 @@ import { CascadeReader, type Chain } from "@cascade/near";
 import { incomingQuote, type OneClick, type Token } from "@cascade/oneclick";
 import { payoutMessage, signWebhook, SIGNATURE_HEADER, type CheckoutSession, type PayAsset, type PaymentPreview, type WebhookEvent, type CheckoutEventType } from "@cascade/sdk";
 
+/** A revenue split as the dashboard shows it. `received` is USDC base units paid into it through checkout. */
+export interface SplitView {
+  id: number;
+  owner: string;
+  createdBy: string;
+  createdAt: string;
+  shares: { account: string; bps: number }[];
+  payments: number;
+  received: string;
+}
+
 export class CheckoutError extends Error {
   constructor(
     readonly status: number,
@@ -262,6 +273,39 @@ export class Checkout {
     const next = { ...m, ...(p.name ? { name: p.name.trim().slice(0, 80) } : {}), ...(p.webhookUrl !== undefined ? { webhookUrl: p.webhookUrl } : {}) };
     await this.cfg.store.putMerchant(next);
     return next;
+  }
+
+  // ------------------------------------------------------------ revenue splits
+
+  /**
+   * Add a split the merchant's account created on-chain (create_split, signed
+   * by its own wallet) to its dashboard. The chain is the source of truth: the
+   * split must exist and belong to the merchant's account.
+   */
+  async registerSplit(m: Merchant, id: number): Promise<SplitView> {
+    if (!Number.isInteger(id) || id < 0) throw new CheckoutError(400, "split id must be a non-negative integer");
+    const rule = await this.reader.split(id);
+    if (!rule) throw new CheckoutError(404, `no split #${id} on the contract`);
+    if (rule.owner !== m.account) throw new CheckoutError(403, `split #${id} belongs to ${rule.owner}, not ${m.account}`);
+    await this.cfg.store.putDoc("split", String(id), m.id, { id, addedAt: this.iso() });
+    return (await this.listSplits(m)).find((s) => s.id === id)!;
+  }
+
+  /** The merchant's splits, read from the contract, with what checkout has paid into each. */
+  async listSplits(m: Merchant): Promise<SplitView[]> {
+    const docs = await this.cfg.store.listDocs<{ id: number }>("split", m.id);
+    const sessions = await this.cfg.store.listSessions(m.id, 1000);
+    const out: SplitView[] = [];
+    for (const d of docs.reverse()) {
+      const rule = await this.reader.split(d.id).catch(() => null);
+      if (!rule) continue;
+      const paid = sessions.filter((s) => s.splitId === d.id && s.status === "paid");
+      out.push({
+        id: rule.id, owner: rule.owner, createdBy: rule.created_by, createdAt: new Date(rule.created_at_ms).toISOString(),
+        shares: rule.shares, payments: paid.length, received: paid.reduce((t, s) => t + BigInt(s.amount), 0n).toString(),
+      });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ sessions

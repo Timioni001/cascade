@@ -6,6 +6,7 @@
  * chain, through the same contracts and calls as production.
  */
 import { parseUsd } from "@cascade/core";
+import { payrollPolicy } from "@cascade/sputnik";
 import type { Store } from "@cascade/db";
 import { expectOk } from "@cascade/engine";
 import { appCalls, ftCalls } from "@cascade/near";
@@ -57,4 +58,14 @@ export async function seedMerchant(w: World, shop: Person, platformStore: Store,
   expectOk(await shop.gaslessFull(ftCalls(ids.usdc).fundAllowance(ids.app, parseUsd("250"), agent.id)), "fund allowance");
   expectOk(await agent.gasless(appCalls(ids.app).agentPay(shop.id, supplier.id, parseUsd("18.40"), "glazeco order 4471")), "agent purchase");
   log("1 agent budget");
+
+  // A revenue split with a community treasury: every sale paid into it is
+  // divided on arrival between the studio, its illustrator and a Sputnik DAO.
+  const illustrator = await w.plainAccount("illustrator");
+  const coop = await w.createDao("makers-coop", payrollPolicy({ finance: [shop.id], approvers: [shop.id], threshold: 1 }));
+  const split = expectOk(await shop.gasless<{ id: number }>(appCalls(ids.app).createSplit(shop.id, [
+    { account: shop.id, bps: 8000 }, { account: illustrator.id, bps: 1500 }, { account: coop, bps: 500 },
+  ])), "create split").value!;
+  await platformStore.putDoc("split", String(split.id), (await platformStore.findMerchantByAccount(shop.id))!.id, { id: split.id, addedAt: new Date().toISOString() });
+  log(`split #${split.id}: 80% studio, 15% illustrator, 5% makers co-op DAO`);
 }

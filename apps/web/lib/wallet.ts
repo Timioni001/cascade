@@ -99,6 +99,19 @@ export async function callContract(p: { contract: string; method: string; args: 
   return out.transaction.hash;
 }
 
+/** Like callContract, and returns the method's JSON return value (e.g. the new split's id). */
+export async function callContractValue<T>(p: { contract: string; method: string; args: object; tgas?: number; deposit?: string }): Promise<T> {
+  const w = await (await getConnector()).wallet();
+  const out = await w.signAndSendTransaction({
+    receiverId: p.contract,
+    actions: [{ type: "FunctionCall", params: { methodName: p.method, args: p.args, gas: `${p.tgas ?? 100}${TGAS}`, deposit: p.deposit ?? "0" } }],
+  });
+  const st = out.status as { Failure?: unknown; SuccessValue?: string } | undefined;
+  if (st?.Failure) throw new Error(`the transaction failed: ${JSON.stringify(st.Failure).slice(0, 200)}`);
+  if (typeof st?.SuccessValue !== "string") throw new Error("the wallet did not return the call's result");
+  return JSON.parse(atob(st.SuccessValue)) as T;
+}
+
 /** A NEP-413 signature over `message`, in the shape Cascade's API takes as `proof`. */
 export async function signProof(message: string, recipient: string, issuedAt: string) {
   const w = await (await getConnector()).wallet();

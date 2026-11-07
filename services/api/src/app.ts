@@ -123,6 +123,11 @@ export function apiApp(o: ApiOptions) {
     }));
     return ctx.json({ object: "list", data });
   });
+  merchant.get("/merchant/splits", async (ctx) => ctx.json({ object: "list", data: await c.listSplits(me(ctx)) }));
+  merchant.post("/merchant/splits", async (ctx) => {
+    const b = await body(ctx);
+    return ctx.json(await c.registerSplit(me(ctx), Number(b.id)), 201);
+  });
   merchant.get("/merchant/keys", async (ctx) => ctx.json({ object: "list", data: await c.listKeys(me(ctx)) }));
   merchant.post("/merchant/keys", async (ctx) => {
     const b = await body(ctx);

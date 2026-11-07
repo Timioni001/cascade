@@ -19,7 +19,7 @@ const { chromium } = require("playwright");
 const BASE = (process.env.CASCADE_WEB ?? "http://localhost:3000").replace(/\/$/, "");
 const KEY = process.env.CASCADE_DASHBOARD_KEY;
 const SKIP = /sign out|revoke|void|refund|delete|remove|cancel subscription|disconnect|log ?out/i;
-const TABS = ["Overview", "Payments", "Invoices", "Subscriptions", "Customers", "Payouts", "Escrow", "Agents", "Webhooks", "Reports", "Settings"];
+const TABS = ["Overview", "Payments", "Invoices", "Subscriptions", "Customers", "Splits", "Payouts", "Escrow", "Agents", "Webhooks", "Reports", "Settings"];
 
 async function api(path, body) {
   const r = await fetch(`${BASE}/v1/${path}`, {

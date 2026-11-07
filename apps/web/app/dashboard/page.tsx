@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Bot, Download, FileText, LayoutGrid, Link2, Loader2, Lock, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Send, Settings2, Store, Undo2, Users, Webhook } from "lucide-react";
+import { ArrowUpRight, Bot, Split, Download, FileText, LayoutGrid, Link2, Loader2, Lock, LogOut, Plus, ReceiptText, RefreshCw, Repeat, ScrollText, Send, Settings2, Store, Undo2, Users, Webhook } from "lucide-react";
 import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
 import { Badge, Brand, DemoBanner, chainName, toneOf, usd } from "../components/ui";
 import { API } from "../../lib/api";
@@ -9,10 +9,11 @@ import { call } from "./api";
 import { CustomersTab, InvoicesTab, SubscriptionsTab } from "./Billing";
 import { SettingsTab } from "./Settings";
 import { AgentsTab, EscrowTab, PayoutsTab } from "./MoneyOut";
+import { SplitsTab } from "./Splits";
 
 type Webhook = { id: string; type: string; status: string; attempts: number; lastError: string | null; createdAt: string };
 type Me = { name: string; account: string; webhookUrl: string | null; payout: { chain: string; address: string } | null };
-type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "payouts" | "escrow" | "agents" | "webhooks" | "reports" | "settings";
+type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "splits" | "payouts" | "escrow" | "agents" | "webhooks" | "reports" | "settings";
 
 const KEY = "cascade_dashboard_key";
 const readKey = () => {
@@ -211,6 +212,7 @@ export default function Dashboard() {
         { id: "invoices", label: "Invoices", icon: ScrollText },
         { id: "subscriptions", label: "Subscriptions", icon: Repeat },
         { id: "customers", label: "Customers", icon: Users },
+        { id: "splits", label: "Splits", icon: Split },
       ],
     },
     {
@@ -349,6 +351,7 @@ export default function Dashboard() {
           {tab === "invoices" && <InvoicesTab secret={key} onError={setError} />}
           {tab === "subscriptions" && <SubscriptionsTab secret={key} onError={setError} />}
           {tab === "customers" && <CustomersTab secret={key} onError={setError} />}
+          {tab === "splits" && me && <SplitsTab secret={key} account={me.account} onError={setError} />}
           {tab === "payouts" && <PayoutsTab secret={key} onError={setError} />}
           {tab === "escrow" && me && <EscrowTab secret={key} account={me.account} onError={setError} />}
           {tab === "agents" && <AgentsTab secret={key} account={me?.account ?? ""} onError={setError} />}

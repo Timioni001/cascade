@@ -297,7 +297,9 @@ export class MockOneClick implements OneClick {
    */
   async simulatePayerDeposit(depositAddress: string, opts: { amount?: bigint; fail?: boolean } = {}): Promise<StatusResponse> {
     const r = await this.rec(depositAddress);
-    if (r.direction !== "in") throw new Error("simulatePayerDeposit is for incoming quotes");
+    // A customer can also pay with USDC already on NEAR: the quote then starts
+    // from USDC on NEAR (classified "out" above), but the deposit is still a
+    // payer's deposit, so it is simulated the same way.
     const q = r.response.quote;
     const amount = opts.amount ?? BigInt(q.amountIn);
     const originTx = { hash: `0x${fakeHash(`${this.seed}:origin:${depositAddress}`)}`, explorerUrl: "mock://origin" };

@@ -142,6 +142,20 @@ describe("revenue splits", () => {
     expect(driver.messages).toEqual([{ recipient: APP, amount: 25_000_000n, msg: '{"split":4}' }]);
     expect(s.status).toBe("paid");
   });
+
+  it("a merchant adds its own on-chain splits to the dashboard and sees what checkout paid into each", async () => {
+    chainState.splits.set(4, { id: 4, owner: "shop.near", shares: [{ account: "shop.near", bps: 9500 }, { account: "makers.sputnik-dao.near", bps: 500 }], created_by: "shop.near", created_at_ms: 0 });
+    chainState.splits.set(5, { id: 5, owner: "other.near", shares: [{ account: "other.near", bps: 10000 }], created_by: "other.near", created_at_ms: 0 });
+    const m = (await store.listMerchants())[0]!;
+    await expect(checkout.registerSplit(m, 5)).rejects.toMatchObject({ status: 403 });
+    await expect(checkout.registerSplit(m, 99)).rejects.toMatchObject({ status: 404 });
+    await expect(checkout.registerSplit(m, -1)).rejects.toMatchObject({ status: 400 });
+    expect(await checkout.registerSplit(m, 4)).toMatchObject({ id: 4, payments: 0, received: "0" });
+    await paidSession({ splitId: 4 });
+    const [v] = await checkout.listSplits(m);
+    expect(v).toMatchObject({ id: 4, owner: "shop.near", payments: 1, received: "25000000" });
+    expect(v!.shares).toEqual([{ account: "shop.near", bps: 9500 }, { account: "makers.sputnik-dao.near", bps: 500 }]);
+  });
 });
 
 describe("refunds", () => {
