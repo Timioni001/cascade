@@ -292,11 +292,13 @@ export class Checkout {
     if (p.escrowId !== undefined) {
       if (p.splitId !== undefined) throw new CheckoutError(400, "a session pays a split or an escrow, not both");
       await this.checkEscrowFundable(m, p.escrowId, p.amount);
-      // One open session per escrow: a second delivery would be refused by the contract.
+      // One open session per escrow: a second delivery would be refused by the
+      // contract. Asking again returns the open session, so the funding link is
+      // stable; a session already being paid is still an error.
       for (const o of await this.cfg.store.listSessions(m.id, 1000)) {
-        if (o.escrowId === p.escrowId && (o.status === "open" || o.status === "processing") && Date.parse(o.expiresAt) > this.now()) {
-          throw new CheckoutError(409, `escrow #${p.escrowId} already has an open checkout session (${o.id})`);
-        }
+        if (o.escrowId !== p.escrowId || Date.parse(o.expiresAt) <= this.now()) continue;
+        if (o.status === "open") return o;
+        if (o.status === "processing") throw new CheckoutError(409, `escrow #${p.escrowId} is being funded right now (${o.id})`);
       }
     }
     const minutes = Math.min(Math.max(p.expiresInMinutes ?? 60, 5), 1440);

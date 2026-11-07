@@ -100,7 +100,15 @@ The optional Cascade fee is a 1Click `appFees` entry paid by the customer on top
 
 ## Merchant dashboard
 
-The dashboard keeps the key in the browser tab's session storage and calls the API on the same origin. A script injected into the dashboard page could read the key while it is open: the dashboard loads no third-party scripts. Use a read-only key for anyone who only needs to look; keys can be revoked from Settings.
+The dashboard keeps the key in the browser tab's session storage and calls the API on the same origin. A script injected into the dashboard page could read the key while it is open. The page itself loads no third-party scripts. The one exception is on demand: pressing **Connect NEAR wallet** loads NEAR Connect (`@hot-labs/near-connect`, pinned 0.11.4), which runs each wallet's own connector in a **sandboxed iframe** that cannot read the page, its storage or the key; it talks to the page only through `postMessage` requests to sign. A wrong or revoked key sends the dashboard back to sign-in. Use a read-only key for anyone who only needs to look; keys can be revoked from Settings.
+
+## Merchant wallet signing
+
+Everything that moves a merchant's money or changes where it goes is signed by the merchant's own NEAR wallet, never by Cascade or by an API key: escrow release and refund (contract checks the caller), agent limits and funding (`set_allowance`, `ft_transfer_call`), revoking an agent, and the payout destination (a NEP-413 message the API verifies against the merchant's account). Cascade never holds the wallet's key; the dashboard only asks the wallet to sign.
+
+## Operator view (`/admin`)
+
+Read-only stats, applications and merchants. Off unless `CASCADE_ADMIN_TOKEN` is set (a Worker secret, at least 24 characters). The token is compared by hashing both sides, so the check takes the same time for any input; wrong tokens are limited to 10 per hour per IP. Responses are `no-store` and `noindex`, and the page is not linked from anywhere. It cannot move money or change any merchant.
 
 ## Cross-chain lines
 

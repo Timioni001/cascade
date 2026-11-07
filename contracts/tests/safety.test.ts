@@ -287,7 +287,7 @@ describe("escrow: the contract holds the money between milestones", () => {
   it("funded through checkout; only the payer releases; refunds go to the payer; closes empty", () => {
     const e = platform.escrow;
     expect(e.funded?.status).toBe("Funded");
-    expect(e.strangerCannotRelease && e.payeeCannotRelease && e.secondSessionRefused).toBe(true);
+    expect(e.strangerCannotRelease && e.payeeCannotRelease && e.secondSessionReused).toBe(true);
     expect([e.studioDelta, e.clientDelta, e.heldAfter]).toEqual([300_000_000n, 500_000_000n, 0n]);
     expect(e.final?.milestones.map((m) => m.status)).toEqual(["Released", "Refunded"]);
   });

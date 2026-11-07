@@ -379,6 +379,7 @@ pnpm test:sandbox    # 31 tests on a local NEAR node, incl. the deploy script (~
 pnpm test            # both
 pnpm test:contracts  # 41 Rust unit tests (needs Rust)
 pnpm test:e2e        # browser test (run pnpm dev first): shop, checkout, receipt, dashboard, invoices, POS, sign-up, phones
+pnpm test:buttons    # clicks every button and checks every link on every page and dashboard tab (run pnpm dev first)
 ```
 
 Each money-safety rule is tested twice: as a contract unit test (`contracts/app/src/tests.rs`) and on a real node (`contracts/tests/safety.test.ts`).
@@ -440,7 +441,9 @@ Keys live only in `.env` (git-ignored); [`.env.example`](.env.example) lists eve
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md): money flow, owners, design decisions
+- [docs/api.md](docs/api.md): every HTTP route, with auth, bodies, limits and webhook events
+- [docs/contracts.md](docs/contracts.md): every contract method, who may call it, state diagrams, events
+- [docs/architecture.md](docs/architecture.md): money flow, owners, repository map, design decisions
 - [docs/threat-model.md](docs/threat-model.md)
 - [docs/research.md](docs/research.md): 1Click, x402 and NEAR facts verified, with gotchas
 - [docs/spikes.md](docs/spikes.md): mainnet tests and results

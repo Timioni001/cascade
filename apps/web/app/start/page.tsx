@@ -102,7 +102,17 @@ function LiveCard() {
   const [sent, setSent] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
+  const missing = [
+    f.company.trim().length < 2 && "company",
+    !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim()) && "a work email",
+    f.useCase.trim().length < 10 && "what you will use Cascade for",
+  ].filter(Boolean) as string[];
+
   async function submit() {
+    if (missing.length) {
+      setError(`Please add ${missing.join(", ")}.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {

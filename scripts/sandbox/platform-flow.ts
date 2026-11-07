@@ -37,7 +37,8 @@ export interface PlatformResult {
     studioDelta: bigint;
     clientDelta: bigint;
     heldAfter: bigint;
-    secondSessionRefused: boolean;
+    /** Asking again returns the same open session: an escrow never has two funding sessions. */
+    secondSessionReused: boolean;
   };
   agent: {
     status: number;
@@ -189,7 +190,7 @@ async function escrowStory(w: World, n: Narrator, cascade: Cascade, shop: Person
     clientDelta: (await w.usdcBalance(client.id)) - clientBefore,
     heldAfter: final ? escrowHeld(final) : -1n,
     // Only one open session may fund an escrow (a second delivery would bounce).
-    secondSessionRefused: second.status === 409,
+    secondSessionReused: second.ok && ((await second.json()) as { id: string }).id === session.id,
   };
 }
 

@@ -92,7 +92,7 @@ try {
   check(x.invoice.status === "paid" && x.invoice.amount === "467000000" && x.invoice.receiptId !== null, `invoice ${x.invoice.number} ($467.00, 2 line items) paid in SOL, with an on-chain receipt`);
   check(x.invoice.events.includes("invoice.created") && x.invoice.events.includes("invoice.paid"), "the shop got invoice.created and invoice.paid webhooks");
   check(x.subscription.status === "active" && x.subscription.prepaidInvoiceAmount === "36000000" && !!x.subscription.periodEnd && Date.parse(x.subscription.periodEnd) - Date.parse(x.subscription.periodStart!) > 85 * 86_400_000, "a subscription with 3 months prepaid ($36.00) is active for 3 months");
-  check(x.escrow.funded?.status === "Funded" && x.escrow.funded.total === "800000000" && x.escrow.secondSessionRefused, "the escrow was funded from Base through checkout ($800.00, held by the contract); a second funding session was refused");
+  check(x.escrow.funded?.status === "Funded" && x.escrow.funded.total === "800000000" && x.escrow.secondSessionReused, "the escrow was funded from Base through checkout ($800.00, held by the contract); asking again reused the one funding session");
   check(x.escrow.strangerCannotRelease && x.escrow.payeeCannotRelease, "neither a stranger nor the studio itself can release escrowed money");
   check(x.escrow.studioDelta === 300_000_000n && x.escrow.clientDelta === 500_000_000n && x.escrow.heldAfter === 0n && x.escrow.final?.status === "Closed", "client released $300 to the studio, the studio refunded $500 to the client; escrow closed holding nothing");
   check(x.agent.status === 200 && x.agent.settlement?.success === true && x.agent.receiptRecorded, "an AI agent paid over x402 from its on-chain allowance, gaslessly; the payment has a receipt");

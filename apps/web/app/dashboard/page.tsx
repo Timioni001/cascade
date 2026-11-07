@@ -265,7 +265,7 @@ export default function Dashboard() {
             <div className="row-start">
               <button className="icon-btn" onClick={() => void load()} aria-label="Refresh">{loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}</button>
               <a className="btn ghost sm" href="/pos"><Store size={15} /> Point of sale</a>
-              <button className="btn sm" onClick={() => setTab("payments")}><Plus size={15} /> New payment link</button>
+              <button className="btn sm" onClick={() => { setTab("payments"); setTimeout(() => document.querySelector<HTMLInputElement>("input[aria-label='Amount in USD']")?.select(), 50); }}><Plus size={15} /> New payment link</button>
             </div>
           </div>
           {error && <div className="card tight error small">{error}</div>}

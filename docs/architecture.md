@@ -39,33 +39,42 @@ Every invoice and batch belongs to an owner: `Account(id)` or `Dao(id)`. Each fe
 
 ```
 contracts/
-  app/          Rust. Owners, invoices, batches, lines. model.rs is a pure state machine; lib.rs binds it to NEAR.
-  factory/      Rust. Creates name.<factory> accounts. Relayer-only, daily cap.
-  mock-usdc/    Rust. Sandbox-only NEP-141 with a freeze list (real USDC can freeze).
-  res/          Prebuilt wasm (ours and the real Sputnik v2 from mainnet).
-  tests/        Sandbox tests: safety rules against real receipts.
+  app/          Rust. Receipts, payout batches, revenue splits, milestone escrow, agent allowances.
+                model.rs and vault.rs are pure state machines; lib.rs binds them to NEAR. Reference: docs/contracts.md
+  factory/      Rust. Creates name.<root> accounts with an optional limited app key. Relayer-only, daily cap.
+  mock-usdc/    Rust. Sandbox/testnet NEP-141 with a freeze list (real USDC can freeze).
+  res/          Prebuilt wasm (ours and the real Sputnik v2 from mainnet) with SHA256SUMS.
+  tests/        Tests on a local nearcore node: safety rules against real receipts, the deploy script.
 packages/
-  core/         Domain types, money (bigint), line hash (Borsh + SHA-256, shared vector with Rust), names, chains.
-  oneclick/     1Click client (from the OpenAPI spec), Cascade's quoting rules, MockOneClick.
-  sputnik/      Payroll policy, register/fund proposals, funding-proposal verifier.
-  near/         `Call` builders, Chain wrapper, NEP-366 sign/decode.
-  db/           Store interface (memory, node:sqlite), accountant CSV.
-  engine/       Use cases (invoice, quote for payer, batch, fund, propose) behind an Executor; checkout.ts: merchants, sessions, webhooks.
-  sdk/          Public, dependency-free: server client, webhook verify, Pay button/modal, EVM payments.
+  core/         Domain types, money (bigint base units), line hash (Borsh + SHA-256, shared vector with Rust), chains, limits.
+  oneclick/     1Click client (from the OpenAPI spec), quoting rules, Confidential Intents, MockOneClick for tests and testnet.
+  sputnik/      DAO payroll policy, register/fund proposals, funding-proposal verifier.
+  near/         Call builders, Chain wrapper, contract reader, NEP-366 sign/decode, event parsing.
+  db/           Store interface with three backends: memory, node:sqlite, Cloudflare D1. Accountant CSV.
+  engine/       Use cases: checkout (merchants, keys, sessions, receipts, webhooks), billing (invoices, plans,
+                subscriptions, customers), refunds, x402 agent payments, payroll batches.
+  sdk/          Public, zero-dependency SDK: server client, webhook verification, Pay button/modal, EVM wallet pay, x402.
+  mcp/          MCP server: merchant tools (invoices, sessions, reports) and an agent wallet (paid_fetch within an allowance).
 services/
-  relayer/      Pays gas for allowed calls (NEP-366) and creates names. Policy + rate limits.
-  settler/      Crank: records 1Click deliveries, executes batches, refunds failures, tracks cross-chain lines; hooks for checkout.
-  api/          Checkout API (Hono): /v1/merchants, /v1/checkout/sessions, /v1/public/*.
+  api/          The /v1 REST API (Hono). Reference: docs/api.md
+  relayer/      Pays gas for allow-listed calls (NEP-366) and creates names. Policy + rate limits.
+  settler/      Crank: records 1Click deliveries, executes batches, refunds failures, renews subscriptions, delivers webhooks.
+  platform/     Composition: config, /health, /api (sandbox sign-up, applications, admin, demo shop), in-process routing.
+  worker/       Cloudflare Worker entry: static site + platform + cron settler on D1.
+  server/       Node entry: the same platform as one process (SQLite), plus Dockerfile.
 apps/
-  web/          Next.js 15: hosted checkout /c/[id] (also the iframe target) and a demo shop /shop.
+  web/          Next.js 15 static export: landing, /c checkout (also the iframe target), /r receipt, /i invoice,
+                /shop demo store, /pos point of sale, /dashboard, /start, /developers, /admin (unlinked).
+                lib/wallet.ts: NEAR Connect, loaded only when the merchant signs.
 scripts/
-  sandbox/      Local node, deployment ("world") and the two stories ("flows").
+  sandbox/      Local node, deployment ("world"), seeded stories ("flows", "platform-flow").
+  e2e/          Browser tests: checkout.e2e.cjs (the main journeys) and buttons.e2e.cjs (every button and link).
+  mainnet/      Deploy (typed "yes" per transaction) and spikes (1Click on mainnet).
+  cloudflare/   Configure and deploy the Worker.
   demo-sandbox.ts   pnpm demo
 ```
 
-Also: `services/server` (one process: API + relayer + settler), `scripts/mainnet` (deploy and spikes), `apps/web` pages `/c/[id]` checkout, `/r/[id]` receipt, `/dashboard`, `/shop` (demo merchant, with an x402-paid `/api/shop/forecast`).
-
-Not built: Solana/NEAR wallet buttons in checkout (QR codes cover phone wallets), team dashboards. Cut: the AI assistant.
+Still not built: a one-click Solana or NEAR wallet button inside the customer checkout (those payers use the QR code or the deposit address), and multi-user team logins (teams share keys with roles today).
 
 ## Checkout flow
 
