@@ -59,3 +59,5 @@ No templates or boilerplate were used. The 1Click types were transcribed from it
 ## Other projects
 
 None. This is the team's only submission.
+
+## Assisted by Claude
