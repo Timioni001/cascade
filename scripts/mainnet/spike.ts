@@ -13,7 +13,7 @@
  *   name      [--name spike-<random>]   relayer creates <name>.<root> with the deployed factory
  *   relay     the name from `name` registers with Cascade through the relayer (fee-free)
  *   split     --refund-to <your address>  pay $1 into a revenue split via customRecipientMsg (needs name + relay)
- *   feecheck  [--amount 100] [--to <NEAR account>]  dry quotes only, nothing is sent: is the Cascade fee
+ *   feecheck  --refund-to <Base address> --to <mainnet account> [--fee-to <mainnet account>] [--amount 100]  dry quotes only, nothing is sent: is the Cascade fee
  *             (CASCADE_FEE_BPS) passed through in full, or does 1Click add its own share? Needs no approval.
  *
  * Results (no keys) are appended to deployments/<network>-spikes.json.
@@ -315,13 +315,15 @@ async function split(cfg: NetConfig, io: Io, oc: OneClick, a: Args) {
  */
 async function feecheck(cfg: NetConfig, io: Io, oc: OneClick, a: Args) {
   const bps = Number(process.env.CASCADE_FEE_BPS ?? 50);
-  const recipient = process.env.CASCADE_FEE_RECIPIENT?.trim();
-  if (!recipient) throw new Error("set CASCADE_FEE_RECIPIENT (the NEAR account that receives the fee) in .env");
+  // 1Click is mainnet-only: --to and --fee-to must be mainnet accounts even when .env points at testnet.
+  const recipient = str(a, "fee-to", process.env.CASCADE_FEE_RECIPIENT?.trim() || "");
+  if (!recipient) throw new Error("pass --fee-to <mainnet account> or set CASCADE_FEE_RECIPIENT");
+  const refundTo = str(a, "refund-to");
   const amount = parseUsd(str(a, "amount", "100"));
   const to = str(a, "to", cfg.root.id);
   io.step(`Fee check: dry quote for $${formatUsd(amount)} from USDC on Base to ${to}, Cascade fee ${bps} bps to ${recipient}`);
   io.log(cfg.oneclickJwt ? "partner JWT: set" : "partner JWT: NOT set");
-  const req = incomingQuote({ payAsset: USDC_BY_CHAIN.base!, owner: to, amountOut: amount, refundTo: "0x000000000000000000000000000000000000dEaD", dry: true, appFee: { recipient, bps } });
+  const req = incomingQuote({ payAsset: USDC_BY_CHAIN.base!, owner: to, amountOut: amount, refundTo, dry: true, appFee: { recipient, bps } });
   const q = await oc.quote(req);
   showQuote(io, req, q);
   const fees = q.quoteRequest.appFees ?? [];
