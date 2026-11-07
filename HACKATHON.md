@@ -61,3 +61,5 @@ No templates or boilerplate were used. The 1Click types were transcribed from it
 None. This is the team's only submission.
 
 ## Assisted by Claude
+
+Built with Claude Code (Anthropic) as a coding assistant: it wrote most of the code, tests and docs under my direction. I set the product design, reviewed the work, and ran the deployments and mainnet transactions.
