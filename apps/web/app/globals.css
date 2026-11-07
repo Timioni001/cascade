@@ -329,7 +329,8 @@ button { font: inherit; color: inherit; }
 :root[data-theme="dark"] .coin-pill img { filter: invert(1); }
 
 /* ---------- operator view (/admin, unlinked) */
-.admin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.admin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.admin-tiles .amount { font-size: 1.75rem; overflow-wrap: anywhere; }
 .admin-scroll { overflow-x: auto; }
 .admin-scroll .table { min-width: 760px; }
 .admin-wrap { max-width: 360px; white-space: pre-wrap; }

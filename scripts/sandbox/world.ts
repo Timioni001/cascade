@@ -203,6 +203,8 @@ export async function createWorld(opts: { log?: (s: string) => void; apiPort?: n
       SETTLER_ACCOUNT_ID: ids.settler, SETTLER_PRIVATE_KEY: keys.get(ids.settler)!.toString(),
       CASCADE_ONECLICK: "mock", CASCADE_ROOT_ID: ids.solver, CASCADE_ROOT_PRIVATE_KEY: keys.get(ids.solver)!.toString(),
       CASCADE_FEE_BPS: "50", CASCADE_FEE_RECIPIENT: ids.factory,
+      // Lets `CASCADE_ADMIN_TOKEN=... pnpm dev` open /admin locally.
+      ...(process.env.CASCADE_ADMIN_TOKEN ? { CASCADE_ADMIN_TOKEN: process.env.CASCADE_ADMIN_TOKEN } : {}),
     }),
     freeze: async (a) => {
       expectOk(await chain.send(solver, ftCalls(ids.usdc).setBlocked(a, true)), "freeze");

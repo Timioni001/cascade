@@ -168,6 +168,33 @@ const assert = (c, m) => {
   await st.waitForSelector("text=Paid. The money is in your account", { timeout: 60000 });
   await st.screenshot({ path: `${out}/22-pos-paid.png` });
 
+  // Live-access application -> operator inbox (only when the stack has an admin token).
+  const adminToken = process.env.CASCADE_ADMIN_TOKEN;
+  if (adminToken) {
+    const ap = await page(1280, 1000);
+    await ap.goto(`${BASE}/start`);
+    await ap.click("button:has-text('Apply for live access')");
+    await ap.waitForSelector("text=Please add");
+    const company = `Audit Roasters ${Date.now() % 100000}`;
+    await ap.fill("input[aria-label='Company']", company);
+    await ap.fill("input[aria-label='Work email']", "ops@auditroasters.example");
+    await ap.fill("textarea[aria-label='Use case']", "Online checkout and in-store payments for our cafes");
+    await ap.click("button:has-text('Apply for live access')");
+    await ap.waitForSelector("text=Application received");
+    const ad = await page(1360, 900);
+    await ad.goto(`${BASE}/admin`);
+    await ad.fill("input[type=password]", adminToken);
+    await ad.click("text=Open");
+    await ad.waitForSelector(`text=${company}`);
+    await ad.selectOption(`select[aria-label='Status of ${company}']`, "approved");
+    await ad.waitForTimeout(600);
+    await ad.reload();
+    await ad.waitForSelector(`text=${company}`);
+    const st = await ad.inputValue(`select[aria-label='Status of ${company}']`);
+    assert(st === "approved", `application status did not persist (${st})`);
+    await ad.screenshot({ path: `${out}/26-admin-applications.png` });
+  }
+
   // Phone widths: landing, shop, developers.
   for (const [name, path] of [["23-mobile-landing", "/"], ["24-mobile-shop", "/shop"], ["25-mobile-developers", "/developers"]]) {
     const ph = await page(390, 844);
@@ -179,7 +206,7 @@ const assert = (c, m) => {
   }
 
   assert(errs.length === 0, `console errors: ${errs.join(" | ")}`);
-  console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${key ? ", dashboard + refund, invoice paid from its page, subscriptions, customers, read-only key" : ""}, mobile`);
+  console.log(`e2e ok: landing, shop, checkout (quote, QR, paid), webhook-fulfilled order, receipt 4/4${process.env.CASCADE_ADMIN_TOKEN ? ", application in the admin inbox" : ""}${key ? ", dashboard + refund, invoice paid from its page, subscriptions, customers, read-only key" : ""}, mobile`);
   await b.close();
 })().catch((e) => {
   console.error("e2e FAILED:", e.message);

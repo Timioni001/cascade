@@ -113,6 +113,7 @@ Used by the hosted checkout, invoice and receipt pages.
 | POST | `/api/sandbox/merchant` | `{name}` → a real testnet NEAR account from the factory, registered gas-free and onboarded with its own NEP-413 signature. Returns `secretKey` and the account's key. Testnet demo only |
 | POST | `/api/apply` | Live-access application: `{company, email, useCase, website?, country?, monthlyVolume?, nearAccount?}` |
 | GET | `/api/admin/overview` | Operator view: stats, applications, merchants. `Authorization: Bearer <CASCADE_ADMIN_TOKEN>`; 404 when the token is unset |
+| POST | `/api/admin/applications/:id` | `{status: received \| reviewing \| approved \| rejected, note?}`: move a live-access application through review. Same token |
 | POST | `/relayer/relay` | A signed NEP-366 delegate action, relayed if the call is on the allowlist (gas paid by Cascade) |
 | POST | `/relayer/names` | `{name, publicKey}` → creates `<name>.<root>` through the factory |
 | POST | `/api/shop/session`, GET `/api/shop/order`, POST `/api/shop/webhook`, GET `/api/shop/forecast` | The built-in demo shop and its x402-paid forecast API, acting as an ordinary merchant |

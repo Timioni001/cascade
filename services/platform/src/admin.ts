@@ -1,7 +1,8 @@
 /**
  * Operator view, for the team only.
  *
- *   GET /api/admin/overview   stats, applications, merchants (Bearer CASCADE_ADMIN_TOKEN)
+ *   GET  /api/admin/overview            stats, applications, merchants (Bearer CASCADE_ADMIN_TOKEN)
+ *   POST /api/admin/applications/:id    {status, note?}: move an application through review
  *
  * Off unless CASCADE_ADMIN_TOKEN is set (a Worker secret, never committed).
  * Wrong tokens are rate-limited per IP, and the comparison hashes both sides
@@ -10,7 +11,7 @@
 import { Hono, type Context } from "hono";
 import { HOUR, type Limiter } from "@cascade/core";
 import type { Store } from "@cascade/db";
-import type { Application } from "./access.js";
+import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from "./access.js";
 
 export interface AdminOptions {
   store: Store;
@@ -87,6 +88,7 @@ export function adminApp(o: AdminOptions) {
         merchants: merchants.length,
         sandboxMerchants: rows.filter((r) => r.sandbox).length,
         applications: applications.length,
+        newApplications: applications.filter((a) => a.status === "received").length,
         sessions, paid, volumeUsd: usd(volume), paid24h, volume24hUsd: usd(volume24h),
         feesUsd: usd((volume * BigInt(o.feeBps)) / 10_000n),
         invoices: invoices.length,
@@ -96,6 +98,20 @@ export function adminApp(o: AdminOptions) {
       applications: applications.reverse(),
       merchants: rows,
     });
+  });
+
+  app.post("/applications/:id", async (c) => {
+    const id = c.req.param("id");
+    const b = (await c.req.json().catch(() => ({}))) as { status?: unknown; note?: unknown };
+    if (!APPLICATION_STATUSES.includes(b.status as ApplicationStatus)) return c.json({ error: { message: `status must be one of ${APPLICATION_STATUSES.join(", ")}` } }, 400);
+    const a = await o.store.getDoc<Application>("application", id);
+    if (!a) return c.json({ error: { message: "no such application" } }, 404);
+    const next: Application = {
+      ...a, status: b.status as ApplicationStatus, reviewedAt: new Date().toISOString(),
+      ...(typeof b.note === "string" ? { note: b.note.trim().slice(0, 500) || null } : {}),
+    };
+    await o.store.putDoc("application", id, "applications", next);
+    return c.json(next);
   });
 
   return app;

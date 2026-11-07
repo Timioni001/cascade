@@ -29,6 +29,9 @@ export interface AccessOptions {
   ipHeader?: string;
 }
 
+export const APPLICATION_STATUSES = ["received", "reviewing", "approved", "rejected"] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
 export interface Application {
   id: string;
   company: string;
@@ -38,7 +41,10 @@ export interface Application {
   monthlyVolume: string | null;
   useCase: string;
   nearAccount: string | null;
-  status: "received";
+  status: ApplicationStatus;
+  /** Set by the operator in /admin. */
+  reviewedAt?: string | null;
+  note?: string | null;
   createdAt: string;
 }
 
