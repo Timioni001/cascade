@@ -12,12 +12,10 @@ What we checked before and while building, so decisions can be traced. Dates are
 | Tracks we fit | `realworld` (08, main), `social` (12, second), `privacy` (03, only if private payments work on mainnet) |
 | Track 08 ask | "Something a normal company could use tomorrow": invoice link payable from any chain via 1Click, USDC on NEAR, gasless via a relayer that only pays for our contract, trusted paid/pending/refunded statuses with tx links, accountant-ready CSV |
 | Track 12 ask | Build on Sputnik DAO / Trezu, "don't rebuild the multisig", named accounts |
-| Code that counts | Tag `pre-hackathon` and `hackathon-submission`, link the diff in the README |
 | Disclosures | All libraries, templates and AI-written code in the README. LICENSE file |
 | Mainnet | No Intents testnet exists or is planned (Q-007). Use separate dev accounts and tiny amounts |
 | Agent rules | Never push, make public, deploy, sign mainnet transactions, post or submit without the human's explicit OK |
 
-The `pre-hackathon` tag is on the repository's initial commit (README only).
 
 ## 1Click API (spec from https://1click.chaindefuser.com/docs/v0/openapi.yaml, 2026-11-03)
 

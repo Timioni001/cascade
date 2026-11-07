@@ -1,13 +1,5 @@
 # NEAR HACKATHON disclosures
 
-## Code written during the hackathon
-
-Everything in this repository except the one-line README of the initial commit was written during the hackathon window (2026-10-19 to 2026-11-14).
-
-- Baseline: tag `pre-hackathon` (the initial commit, README only)
-- Submission: tag `hackathon-submission` (to be created at submission)
-- Diff: https://github.com/timioni001/cascade/compare/pre-hackathon...hackathon-submission
-
 ## Tracks
 
 | Track | Official brief | What Cascade ships for it |
