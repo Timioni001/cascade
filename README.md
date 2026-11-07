@@ -84,7 +84,7 @@ The status column says how each feature was verified:
 | **Self-serve sandbox** | `/start` creates a real testnet account through the factory, registers it gas-free, onboards it with NEP-413, and returns API keys in seconds | Testnet |
 | **Live-access applications** | Businesses apply at `/start`. Applications are stored for review | Testnet |
 | **Team keys** | Read-only `rk_` keys for an accountant or a support tool, and an accountant CSV export | Local node · browser-tested |
-| **Cascade fee** | 0.5% through 1Click `appFees`, paid by the customer, shown on the checkout. The merchant still receives the exact amount | Implemented. Fee pass-through with the partner key: check with `pnpm spike feecheck` (free) |
+| **Cascade fee** | 0.5% through 1Click `appFees`, paid by the customer, shown on the checkout. The merchant still receives the exact amount | Implemented. Measured on mainnet (dry quote, with and without a 1Click key): 1Click keeps half, so Cascade nets 0.25% today ([spikes](docs/spikes.md)) |
 
 ## How it works
 
@@ -434,7 +434,7 @@ Keys live only in `.env` (git-ignored); [`.env.example`](.env.example) lists eve
 - **Not yet verified on mainnet:**
   - delivery into a revenue split through `customRecipientMsg`,
   - private payouts (Confidential Intents),
-  - the full Cascade fee with the partner key (the dry check is `pnpm spike feecheck`).
+  - the full Cascade fee: 1Click currently keeps half of it, with or without our key (`pnpm spike feecheck`).
 - **Wallets.** Payers on Solana and NEAR pay by QR or deposit address. The one-click wallet button covers EVM wallets.
 - **Live accounts.** Live access is by application and manual review.
 

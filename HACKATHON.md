@@ -39,7 +39,7 @@ Everything in this repository except the one-line README of the initial commit w
 
 **Verified on mainnet:** a $1 payment from Base delivered as exactly 1.00 USDC on NEAR, and $1 sent from NEAR to Base, both through 1Click (links in the README's Proof section).
 
-**Not yet verified on mainnet:** revenue-split delivery via `customRecipientMsg`, private payouts, and the full Cascade fee with the partner key.
+**Not yet verified on mainnet:** revenue-split delivery via `customRecipientMsg`, private payouts, and the full Cascade fee (a dry quote on mainnet shows 1Click keeps half of it, with or without our key).
 
 ## AI-written code
 

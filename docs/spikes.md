@@ -15,6 +15,6 @@ NEAR Intents has no testnet, so a few questions can only be answered on mainnet.
 | 5 | Relayer: one fee-free `register_owner` through our relayer | Deploy app, relay one delegate action | gas only | not run |
 | 6 | Private payment: with a partner JWT, request `confidentiality: "basic"` for USDC NEAR -> USDC Base and send $1. What is visible on NEAR and on Base? | Needs the JWT | ~$1 | not run, needs JWT |
 | 7 | Revenue split: does 1Click deliver with `customRecipientMsg` so the payment becomes a split batch? | `pnpm spike split --refund-to <addr>` after `name` and `relay` | ~$1 | not run |
-| 8 | Fee: with the partner JWT, does our `appFees` (50 bps) pass through in full? | Free half: `pnpm spike feecheck` (dry quotes, nothing sent). Then one real checkout | $0, then ~$1 | not run |
+| 8 | Fee: with the partner JWT, does our `appFees` (50 bps) pass through in full? | `pnpm spike feecheck` (dry quotes, nothing sent) | $0 | **done 2026-11-07:** no. With and without the JWT, 1Click returns 25 bps to us and 25 bps to its own account; a $100 EXACT_OUTPUT quote costs the payer 101.527033 USDC on Base either way. Net Cascade fee today: 0.25%. Partner terms to be requested from the 1Click team |
 
 Write results here as they come in, with transaction links.
