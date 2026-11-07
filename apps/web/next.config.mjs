@@ -12,6 +12,8 @@ const devApi = process.env.CASCADE_DEV_API ?? "http://127.0.0.1:8788";
 export default {
   ...(dev ? {} : { output: "export" }),
   images: { unoptimized: true },
+  // No floating dev badge: it lands in screenshots and the demo recording.
+  devIndicators: false,
   transpilePackages: ["@cascade/sdk"],
   // Workspace packages use ESM-style "./x.js" imports of TypeScript files.
   webpack(config) {

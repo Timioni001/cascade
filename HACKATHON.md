@@ -10,9 +10,10 @@ Everything in this repository except the one-line README of the initial commit w
 
 ## Tracks
 
-- `realworld` (08, Real-World Money): main track
-- `social` (12, Social Money): Sputnik DAO team payroll
-- `privacy` (03): only if private payments are shown working on mainnet
+| Track | Official brief | What Cascade ships for it |
+| --- | --- | --- |
+| `realworld` Real-World Money (main) | "Build payroll, invoicing, remittances, merchant payments and stablecoin rails for real businesses." "Something a normal company could use tomorrow." | Any-coin checkout with exact USDC settlement, point of sale, invoices, subscriptions, refunds, payouts to any chain, settlement on five chains, self-serve sandbox and a developer SDK |
+| `social` Social Money | "Build shared budgets, programmable rewards, collective ownership and reputation-based access on top of Sputnik DAO and Trezu." "Don't rebuild the multisig — build what communities do with it." | Team payroll approved by a Sputnik DAO v2 proposal (fee-free votes, a preparer cannot fund alone), revenue splits to members and DAOs on arrival, shared agent budgets with on-chain limits |
 
 ## Submission summary
 
@@ -30,12 +31,15 @@ Everything in this repository except the one-line README of the initial commit w
 | Refunds | Back in the customer's coin and chain | Hash-locked batch line through 1Click |
 | AI agents | x402 paywalls; agents pay from budgets with on-chain limits; MCP server for assistants | `agent_pay` allowances with per-payment and daily limits, mandate on every receipt |
 | Self-serve access | Instant sandbox accounts, live-access applications, developer portal | Sandbox accounts are real testnet accounts from the Cascade factory |
+| Merchant wallet | The dashboard signs escrow releases, agent budgets and payout changes with the merchant's own NEAR wallet | NEAR Connect; NEP-413 and function calls signed by the merchant |
 
 **Try it:** [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev): create a sandbox account at `/start`, take a payment at `/pos`, or buy from the demo shop. Locally: `pnpm demo` runs every story above on a NEAR sandbox node with 38 checks.
 
 **What is real and what is simulated on testnet:** contracts, accounts, receipts, escrow, splits, payouts, agent budgets and webhooks are real. The cross-chain swap is simulated because NEAR Intents has no testnet; real 1Click payments are shown separately on mainnet (see the README's Proof section).
 
-**Tracks:** Real-World Money (main): checkout, invoices, point of sale, payroll and settlement for real businesses. Social Money: team payroll approved by a Sputnik DAO, shared revenue splits.
+**Verified on mainnet:** a $1 payment from Base delivered as exactly 1.00 USDC on NEAR, and $1 sent from NEAR to Base, both through 1Click (links in the README's Proof section).
+
+**Not yet verified on mainnet:** revenue-split delivery via `customRecipientMsg`, private payouts, and the full Cascade fee with the partner key.
 
 ## AI-written code
 

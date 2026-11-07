@@ -1,239 +1,453 @@
 # Cascade
 
-![Cascade: get paid in any coin, receive dollars](docs/media/cascade-coming-soon-1600x900.png)
+Payments infrastructure on NEAR. A business is paid in any coin on any chain and receives the exact amount it asked for in USDC. Every payment leaves a receipt on NEAR that anyone can verify. Checkout, point of sale, invoices, subscriptions, payouts, DAO payroll, revenue splits, milestone escrow, refunds, and payments by AI agents (x402 and MCP).
 
-Payments infrastructure on NEAR: let anyone pay you with any coin on any chain, and receive exactly the US dollars you asked for (USDC on NEAR), in your own account or your team's DAO. People pay through a button; AI agents pay through HTTP 402.
+![Cascade landing page](docs/media/screens/landing.png)
 
-A small ceramics studio sells a $25 mug to a customer abroad who holds ETH on Base. Card processing is slow and expensive to set up in much of the world; plain crypto means telling the customer which coin, which chain and which address, and then checking a block explorer by hand. With Cascade the shop adds one button. The customer picks the coin they already have and pays from their wallet (or scans a QR code); the shop receives exactly $25.00 in USDC on NEAR, an on-chain receipt anyone can verify, and a signed webhook that tells its server to ship. Sales can be split automatically with collaborators or a DAO, refunds go back in the customer's own coin, and an AI agent can buy from the shop's API the same way. Cascade never holds the shop's money: NEAR Intents delivers it straight to the shop's account, its DAO, or an on-chain split. The same rails let a freelancer invoice a client and a team run payroll after its DAO approves, with no network fees for anyone.
+| | |
+| --- | --- |
+| **Live (NEAR testnet)** | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
+| **Mainnet proof** | Real payments through NEAR Intents (1Click), Base → NEAR and NEAR → Base: [Proof](#proof) |
+| **Run it locally** | `pnpm i && pnpm demo` (one command, no keys, no money, ~80 s, 38 checks) |
+| **Tests** | 95 unit · 31 on a local NEAR node · 41 Rust contract · browser end-to-end |
+| **Tracks** | Real-World Money (`realworld`), Social Money (`social`) · disclosures in [HACKATHON.md](HACKATHON.md) |
+| **License** | MIT |
 
-> **Status (2026-11-03):** everything below runs locally against a real NEAR node (the sandbox) and is tested. Deployment plan: all contracts live on **NEAR testnet** with a public demo (the cross-chain swap is simulated there, because NEAR Intents has no testnet), plus a small **mainnet proof** of real 1Click payments (about $3). Deploying the contracts to mainnet would lock ~15-20 NEAR of storage, over this project's hackathon budget. Scripts and steps: [runbook](docs/mainnet-runbook.md). Links will appear under [Proof](#proof).
+## Contents
 
-## For merchants
+1. [The problem](#the-problem)
+2. [Why it needs a chain, and why NEAR](#why-it-needs-a-chain-and-why-near)
+3. [What it can do](#what-it-can-do)
+4. [How it works](#how-it-works)
+5. [Try it on the live site](#try-it-on-the-live-site)
+6. [Run it locally](#run-it-locally)
+7. [Screens](#screens)
+8. [Proof](#proof)
+9. [For developers](#for-developers)
+10. [Numbers](#numbers)
+11. [Tests](#tests)
+12. [Security model](#security-model)
+13. [Repository layout](#repository-layout)
+14. [Deploy and host](#deploy-and-host)
+15. [Status and limits](#status-and-limits)
+16. [Documentation](#documentation)
+
+## The problem
+
+A business that sells across borders has two options today.
+
+- **Cards and bank transfers:** typically 2.9% + $0.30 per online card payment ([Stripe US pricing](https://stripe.com/pricing)), more for international cards, and not available to merchants in much of the world. Sending money across borders costs 6.49% on average ([World Bank, Remittance Prices Worldwide, Q1 2025](https://remittanceprices.worldbank.org/sites/default/files/rpw_main_report_and_annex_q125_1_0.pdf)).
+- **Crypto:** customers already hold dollars and other assets on many chains. But accepting them means telling the customer which coin, which chain and which address, checking a block explorer by hand, and matching the payment to an order. Refunds, payroll and splits are manual transfers.
+
+Cascade makes it one button. The customer pays with what they already hold. The business receives exactly $25.00 in USDC, together with an order-bound receipt on NEAR and a signed webhook.
+
+## Why it needs a chain, and why NEAR
+
+Each property below would need trust in a company if it ran on a database. On NEAR, a contract enforces it, or the chain records it.
+
+| Need | Without a chain | With Cascade on NEAR |
+| --- | --- | --- |
+| Accept any coin, receive one currency | A custodian swaps and holds funds | **NEAR Intents (1Click)** swaps and delivers `EXACT_OUTPUT` USDC straight to the merchant. Cascade never holds checkout money |
+| Proof a payment happened, for this order | The processor's word | A **receipt on the Cascade contract**, bound to the order hash and the one-time deposit address. Anyone can re-check it at `/r/<id>` |
+| Split a sale between partners | A trusted party pays everyone later | The contract divides the payment the moment it arrives (`ft_on_transfer`) |
+| Payroll for a team or a community | One person controls the bank account | A **Sputnik DAO v2** proposal funds a locked batch. Members vote, and no single preparer can move the money |
+| Escrow for milestone work | An escrow company | The contract holds the funds. Only the payer or an arbiter can release a milestone, and refunds can only go back to the payer |
+| Let an AI agent spend money safely | Shared card numbers | **On-chain allowances**: per-payment and daily limits, expiry, allowed recipients, revocable. The agent's mandate appears on every receipt |
+| No gas, no seed phrase for users | n/a | **Meta-transactions (NEP-366)** through a relayer, **named accounts** from a factory, **NEP-413** signed messages for onboarding |
+
+## What it can do
+
+The status column says how each feature was verified:
+- **Mainnet:** real money on NEAR mainnet.
+- **Testnet:** on the live testnet site.
+- **Local node:** in tests and `pnpm demo` against a real NEAR node running locally.
+
+| Feature | What the user gets | Status |
+| --- | --- | --- |
+| **Any-coin checkout** | Pay button, hosted page, QR code, browser-wallet payment. 200+ assets on 35+ chains through 1Click. The fee is shown upfront and the merchant receives the exact amount | Mainnet (1Click delivery) · Testnet (swap simulated) |
+| **On-chain receipts** | `/r/<id>` re-checks four facts from the chain on every load: recorded, bound to the order, same deposit address, delivered | Testnet ([first receipt](https://cascade.timioni1490.workers.dev/r/cs_aIGePC35X1T6gDz0Il)) |
+| **Signed webhooks** | HMAC with a timestamp, retries with backoff, a delivery log. The demo shop ships only on a verified webhook | Testnet · Local node |
+| **Point of sale** | `/pos`: type an amount, the customer scans, the screen turns green when the money arrives | Testnet · Local node |
+| **Invoices** | Numbered, with line items and due dates. A hosted page payable in any coin, printable to PDF, with an overdue reminder | Local node · browser-tested |
+| **Subscriptions** | Plans billed every day, week, month or year. Renewal invoices go out before each period, up to 12 periods can be prepaid, and unpaid plans go past due, then cancelled | Local node · browser-tested |
+| **Customers** | Aggregated across invoices and subscriptions | Local node |
+| **Settle on any chain** | USDC on NEAR, Ethereum, Base, Arbitrum or Solana. A change needs a NEP-413 signature from the merchant's account, so a leaked API key cannot redirect money | Local node. Mainnet delivery NEAR → Base verified |
+| **Refunds** | Partial or full, back in the customer's coin and chain, through a hash-locked batch line | Local node |
+| **Payouts and payroll** | Up to 50 recipients, each on their own chain, in one locked batch. Chunked execution, and failed lines return to the owner | Local node. Mainnet NEAR → Base verified |
+| **DAO payroll** (`social`) | A Sputnik DAO v2 team joins through its own proposal. Payroll is one proposal with fee-free votes, and a preparer can never fund alone | Local node, with the real Sputnik v2 wasm from mainnet |
+| **Revenue splits** | e.g. 80/15/5 between a shop, an illustrator and a DAO, split on arrival with no signatures | Local node. 1Click `customRecipientMsg` on mainnet not yet tested |
+| **Milestone escrow** | Up to 20 milestones, funded by the client from any chain, released per milestone, refundable to the client after a date | Local node · release/refund buttons in the dashboard |
+| **AI agent budgets** | `set_allowance` with limits the contract enforces. The agent pays gas-free with `agent_pay`, and revoking returns the balance | Local node |
+| **x402 paywalls** | `x402Guard` returns HTTP 402 with payment options, and one payment unlocks one response. `pnpm agent` shows the full loop | Local node · Testnet |
+| **MCP server** | Claude, Cursor or any MCP client can run the account ("invoice Fieldwork Café for 24 mugs") and spend an agent budget (`paid_fetch`) | Local node ([docs/mcp.md](docs/mcp.md)) |
+| **NEAR wallet in the dashboard** | NEAR Connect (HOT, Meteor, Intear, MyNearWallet, OKX…). The merchant's own wallet signs escrow releases, agent budgets and payout changes, and Cascade never holds the key | Built. Real-wallet run still to be recorded |
+| **Self-serve sandbox** | `/start` creates a real testnet account through the factory, registers it gas-free, onboards it with NEP-413, and returns API keys in seconds | Testnet |
+| **Live-access applications** | Businesses apply at `/start`. Applications are stored for review | Testnet |
+| **Team keys** | Read-only `rk_` keys for an accountant or a support tool, and an accountant CSV export | Local node · browser-tested |
+| **Cascade fee** | 0.5% through 1Click `appFees`, paid by the customer, shown on the checkout. The merchant still receives the exact amount | Implemented. Fee pass-through with the partner key: check with `pnpm spike feecheck` (free) |
+
+## How it works
+
+### A checkout payment
+
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+sequenceDiagram
+    autonumber
+    participant S as Shop server
+    participant C as Cascade API
+    participant B as Customer
+    participant I as NEAR Intents (1Click)
+    participant N as Cascade contract (NEAR)
+    S->>C: create session ($25.00, order id)
+    C-->>S: session url
+    B->>C: open checkout, pick "ETH on Base"
+    C->>I: EXACT_OUTPUT quote: 25.00 USDC to the merchant (+0.5% fee)
+    I-->>B: one-time deposit address + QR
+    B->>I: send ETH on Base
+    I->>N: deliver exactly 25.00 USDC to the merchant on NEAR
+    C->>N: settler records the receipt (order hash, deposit address)
+    C-->>S: signed webhook: checkout.session.completed
+    B->>N: receipt page re-checks the record on the chain
+```
+
+### Architecture
+
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+flowchart LR
+    subgraph Browser
+      W[Web app: checkout, POS, dashboard, receipts]
+      NC[NEAR Connect wallet]
+    end
+    subgraph "Cloudflare Worker (one deployment)"
+      API[Checkout and billing API /v1]
+      REL[Relayer /relayer: pays gas, NEP-366]
+      SET[Settler, cron: records receipts, runs batches]
+      DB[(D1)]
+    end
+    subgraph NEAR
+      APP[Cascade app contract: receipts, batches, splits, escrow, allowances]
+      FAC[Name factory]
+      DAO[Sputnik DAO v2]
+      USDC[USDC NEP-141]
+    end
+    OC[1Click / NEAR Intents: 35+ chains]
+    W --> API
+    W --> REL
+    NC --> APP
+    API --> DB
+    API --> OC
+    SET --> OC
+    SET --> APP
+    REL --> APP
+    REL --> FAC
+    OC --> USDC --> APP
+    DAO --> APP
+```
+
+### Team payroll approved by a DAO (`social`)
+
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+sequenceDiagram
+    participant P as Preparer
+    participant D as Sputnik DAO
+    participant A as Cascade contract
+    participant I as 1Click
+    P->>A: create batch (50 lines, each on its own chain), hash locked
+    P->>D: proposal: ft_transfer_call(total, batch hash)
+    Note over D: members vote gas-free (relayed)
+    D->>A: funds the batch (contract checks amount and hash, else refunds all)
+    A->>I: execute lines in chunks
+    I-->>A: delivered, or failed and returned to the DAO
+```
+
+### An AI agent paying an API (x402)
+
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+sequenceDiagram
+    participant O as Owner wallet
+    participant A as Cascade contract
+    participant G as Agent (MCP paid_fetch)
+    participant M as Merchant API (x402Guard)
+    O->>A: set_allowance(agent, $5/payment, $20/day, expiry, purpose)
+    O->>A: fund with ft_transfer_call
+    G->>M: GET /forecast
+    M-->>G: 402 Payment Required (price, pay-to)
+    G->>A: agent_pay (relayed, no gas), limits enforced
+    G->>M: retry with payment proof
+    M-->>G: 200 + data · receipt shows owner, mandate and limits
+```
+
+## Try it on the live site
+
+The live site runs on NEAR testnet. Contracts, accounts, receipts and webhooks are real there. The cross-chain swap is simulated, because NEAR Intents has no testnet; real swaps are shown on mainnet under [Proof](#proof).
+
+| Do | See |
+| --- | --- |
+| Open [/shop](https://cascade.timioni1490.workers.dev/shop), press **Pay with any crypto**, pick **ETH on Base** | The exact ETH amount, the 0.5% fee line, and "Oakline Ceramics receives $25.00" |
+| Enter any Base address as the refund address, press **Get payment address** | A one-time deposit address and a QR code |
+| Press **Simulate the payment** | Within seconds, **Payment complete** |
+| Press **Verify receipt** | Four green checks recomputed from NEAR, with a link to the transaction |
+| Close the checkout | The shop says **Order … paid**. Its server verified the signed webhook |
+| Open [/start](https://cascade.timioni1490.workers.dev/start), enter a business name, press **Create a sandbox account** | A new `sbx-…` testnet account, a secret key and the account key |
+| Press **Point of sale**, type `12.50`, press **Charge $12.50** | A QR code. After paying, the screen turns green with an on-chain receipt |
+| Open [/dashboard](https://cascade.timioni1490.workers.dev/dashboard) with the secret key | Balance, revenue chart, payments, refunds, invoices, subscriptions, payouts, escrow, agents, webhooks, CSV |
+| In the dashboard, open **Agents** and press **Connect NEAR wallet** | The wallet picker, and a form whose limits your own wallet signs |
+| Open [/developers](https://cascade.timioni1490.workers.dev/developers) | Quickstart, API reference, webhooks, x402, MCP |
+
+## Run it locally
+
+Requirements: Node 22.13+ and pnpm 10. The first run needs internet access, because it downloads the NEAR sandbox node (~90 MB). You don't need keys, money or Rust.
+
+```sh
+pnpm i
+pnpm demo          # every story end to end in the terminal, 38 checks, exits non-zero on failure
+pnpm dev           # the same stack, clickable at http://localhost:3000 (prints a merchant secret key)
+pnpm agent         # in a second terminal: an AI agent pays the shop's x402 API
+pnpm worker:local  # the same inside the Cloudflare Worker runtime with D1, on :8787
+```
+
+`pnpm demo` runs these stories on a local NEAR node:
+1. A freelancer gets a named account with no seed phrase.
+2. She invoices $300, and the client pays in ETH on Base.
+3. She splits $200 to Solana, Base and NEAR with one signature.
+4. Her studio, a Sputnik DAO, joins through a proposal and runs payroll on three chains after 2 of 3 approvals. A frozen recipient's line returns to the DAO.
+5. A shop onboards with NEP-413, takes $25 in ETH on Base and verifies the webhook. It also rejects a forged one.
+6. A sale is split 80/15/5 on arrival.
+7. A $10 refund goes back as ETH on Base.
+8. An agent pays over x402, and a replay is refused.
+9. The shop changes its payout chain, bills a $467 invoice paid in SOL, starts a prepaid subscription, and runs an $800 escrow (one milestone released, one refunded). It also gives an agent a $5 budget with on-chain limits.
+10. Finally, the demo checks that nobody but the relayer paid gas.
+
+## Screens
+
+All captured from the running app (`pnpm test:e2e`). Light and dark themes are both available.
+
+**Get paid**
+
+| | |
+| --- | --- |
+| ![Shop](docs/media/screens/shop.png) | ![Choose a coin](docs/media/screens/checkout-quote.png) |
+| Demo shop with a "Pay with any crypto" button | Pick any coin; the fee and the exact amount received are shown upfront |
+| ![Deposit address](docs/media/screens/checkout-deposit.png) | ![Paid](docs/media/screens/checkout-paid.png) |
+| One-time deposit address and QR | Payment complete |
+| ![Order paid](docs/media/screens/shop-paid.png) | ![Receipt](docs/media/screens/receipt.png) |
+| The shop marks the order paid from a verified webhook | Public receipt, re-checked from NEAR |
+| ![Point of sale](docs/media/screens/pos.png) | ![Point of sale, paid](docs/media/screens/pos-paid.png) |
+| Point of sale: amount and QR | Paid in person |
+| ![Invoice](docs/media/screens/invoice.png) | ![Invoice paid](docs/media/screens/invoice-paid.png) |
+| Hosted invoice, payable in any coin | Paid invoice |
+
+**Run the business**
+
+| | |
+| --- | --- |
+| ![Dashboard](docs/media/screens/dashboard.png) | ![Refund](docs/media/screens/refund.png) |
+| Overview: balance, revenue, recent payments | Refund in the customer's own coin |
+| ![Invoices](docs/media/screens/invoices.png) | ![Subscriptions](docs/media/screens/subscriptions.png) |
+| Invoices | Plans and subscriptions |
+| ![Customers](docs/media/screens/customers.png) | ![Webhooks](docs/media/screens/webhooks.png) |
+| Customers | Webhook deliveries and retries |
+| ![Reports](docs/media/screens/reports.png) | ![Settings](docs/media/screens/settings.png) |
+| Accountant CSV | Team keys and a payout chain change signed by your NEAR wallet |
+
+**Pay out, escrow and agents**
+
+| | |
+| --- | --- |
+| ![Payouts](docs/media/screens/payouts.png) | ![Escrow](docs/media/screens/escrow.png) |
+| Payout batches, every recipient on their own chain | Milestone escrow held by the contract |
+| ![Agents](docs/media/screens/agents.png) | ![Developers](docs/media/screens/developers.png) |
+| Agent budgets signed by your wallet, MCP setup | Developer portal |
+
+**Access and mobile**
+
+| | | |
+| --- | --- | --- |
+| ![Sandbox sign-up](docs/media/screens/start.png) | ![Dark](docs/media/screens/landing-dark.png) | ![Mobile checkout](docs/media/screens/mobile-checkout.png) |
+| Sandbox account in seconds | Dark theme | Checkout on a phone |
+| ![Mobile shop](docs/media/screens/mobile-shop.png) | ![Mobile landing](docs/media/screens/mobile-landing.png) | ![Mobile developers](docs/media/screens/mobile-developers.png) |
+| Shop on a phone | Landing on a phone | Developers on a phone |
+
+## Proof
+
+| What | Network | Link |
+| --- | --- | --- |
+| Live app: shop, checkout, POS, dashboard, sandbox sign-up | NEAR testnet + Cloudflare | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
+| First live checkout: $25.00 paid, receipt #0 recorded on-chain | NEAR testnet | [receipt](https://cascade.timioni1490.workers.dev/r/cs_aIGePC35X1T6gDz0Il) · [transaction](https://testnet.nearblocks.io/txns/2zxX5hs1mhN7BibqsZ9TZwUythmfmqZagzZXC233fY7M) |
+| Contracts: app (locked, no access keys), factory, mock USDC | NEAR testnet | [`deployments/testnet.json`](deployments/testnet.json) |
+| **$1 paid in USDC on Base, received as exactly 1.00 USDC on NEAR** through 1Click | Mainnet | [Base tx](https://basescan.org/tx/0xd96897cadd46d529d3146471b791d70950f6299857a349f243db1e3e58505edf) → [NEAR tx](https://nearblocks.io/txns/FLf4dvUSLR2dEeJTHZXknjSybuipCbSpgSBU4sDqPKr8) (1.004745 in, 1.00 out) |
+| **$1 sent from NEAR, received on Base** through 1Click | Mainnet | [NEAR tx](https://nearblocks.io/txns/AfevEhJpLCiPBnt5WumWi7nj8CMBvTFxsyXXZqLrLkcL) → [Base tx](https://basescan.org/tx/0x08672264184dedbf01082aa96551f58647074078fc8c3216f132a5dad672992b) (1.00 in, 0.997398 out) |
+| Full records with quote signatures and deadlines | Mainnet | [`deployments/mainnet-spikes.json`](deployments/mainnet-spikes.json) |
+
+## For developers
 
 ```ts
-// Your server (the secret key never leaves it)
+// Server: the secret key never leaves it
 import { Cascade } from "@cascade/sdk/server";
 const cascade = new Cascade({ apiKey: process.env.CASCADE_SECRET_KEY! });
 const session = await cascade.checkout.create({ amount: "25.00", description: "Stoneware mug", reference: order.id }, { idempotencyKey: order.id });
 
-// Your page: a "Pay with any crypto" modal
+// Page: the "Pay with any crypto" modal
 import { openCheckout } from "@cascade/sdk/browser";
 openCheckout({ sessionUrl: session.url });
 
-// Your webhook endpoint
+// Webhook endpoint
 import { verifyWebhook } from "@cascade/sdk/webhooks";
 const event = await verifyWebhook(rawBody, req.headers["cascade-signature"], process.env.CASCADE_WEBHOOK_SECRET!);
 if (event.type === "checkout.session.completed") ship(event.data.session.reference);
 
-// An API that AI agents pay for per call (x402 v2)
+// An API that AI agents pay per call (x402 v2)
 import { x402Guard } from "@cascade/sdk/x402";
 const guard = x402Guard(cascade, { price: "0.10", description: "One forecast" });
-export async function GET(req: Request) {
-  const g = await guard(req);
-  return g.paid ? Response.json(forecast(), { headers: g.headers }) : g.response;
-}
 
-// Refund part of an order, in the coin and on the chain the customer paid with
-const refund = await cascade.refunds.create(session.id, { amount: "10.00" }); // then sign refund.calls with your NEAR key
-```
-
-- **Onboarding** is a signed message (NEP-413) from the receiving NEAR account, or from a preparer its DAO approved, so nobody can open a merchant account that pays into an account they do not control.
-- **Revenue splits:** create a split once on-chain (`create_split`, e.g. 80% shop / 15% illustrator / 5% a DAO); sessions with `splitId` are divided by the contract the moment the money arrives.
-- **Receipts:** every paid session has a public page (`/r/<session>`) that rechecks the on-chain record, its binding to the order, and the delivery.
-- **Fees:** an optional Cascade fee is added for the customer through 1Click `appFees`; the merchant always receives the exact amount.
-- **Settle where you want:** USDC on NEAR (default), Ethereum, Base, Arbitrum or Solana; 1Click delivers there directly. Changing it needs a NEP-413 signature from the merchant's account, so a leaked API key cannot redirect money. The receipt is still recorded on NEAR.
-- **Invoices:** numbered invoices with line items and due dates, a hosted page (`/i/<id>`) the customer pays with any coin, printable to PDF, one `invoice.overdue` reminder.
-- **Subscriptions:** plans billed every day, week, month or year. Crypto has no card on file, so renewal invoices go out before each period ends; customers can prepay up to 12 periods. Unpaid renewals become `past_due`, then `canceled`. **Customers** are aggregated across invoices and subscriptions.
-- **Milestone escrow (on-chain):** `create_escrow` with up to 20 milestones; the customer funds it through an ordinary checkout from any chain (1Click delivers into the contract); only the payer (or an arbiter) releases a milestone to the payee, refunds only go to the payer, and anyone can return unreleased money after the refund date.
-- **Agent budgets (on-chain):** an owner gives an AI agent an allowance with a per-payment limit, a daily limit, an expiry and optional allowed recipients. The agent pays x402 invoices with `agent_pay`, gaslessly; the contract refuses anything outside the limits, and revoking returns the rest at once.
-- **AI assistants (MCP):** `cascade-mcp` lets Claude, Cursor or any MCP client run the account ("invoice Fieldwork Café for 24 mugs") and lets an agent pay x402 APIs from its budget with `paid_fetch`. Every agent payment's receipt shows who authorized it, for what, and within which limits. Setup: [docs/mcp.md](docs/mcp.md).
-- **Pay out from the dashboard view:** payouts to any chain, escrows with milestone progress (and a funding link the client pays in any coin), and agent budgets with today's spend.
-- **Point of sale:** a merchant types an amount on a phone or tablet ([`/pos`](apps/web/app/pos/page.tsx)); the customer scans the QR and pays in any coin; the screen turns green when the money has arrived, with an on-chain receipt.
-- **Self-serve onboarding:** instant sandbox accounts for anyone and a live-access application for businesses ([`/start`](apps/web/app/start/page.tsx)).
-- **Team access:** read-only keys (`rk_…`) for an accountant or a support tool can see everything and change nothing.
-
-```ts
-const inv = await cascade.invoices.create({ customer: { name: "Fieldwork Café" }, items: [{ description: "Stoneware mug", quantity: 24, unitAmount: "18.00" }] });
+// Billing
+await cascade.invoices.create({ customer: { name: "Fieldwork Café" }, items: [{ description: "Stoneware mug", quantity: 24, unitAmount: "18.00" }] });
 const plan = await cascade.plans.create({ name: "Mug of the month", amount: "12.00", interval: "month" });
 await cascade.subscriptions.create({ planId: plan.id, customer: { name: "Ines" }, prepaidPeriods: 3 });
-await cascade.checkout.create({ amount: "800.00", description: "Custom tableware", escrowId: 0 }); // funds escrow #0
-const readOnly = await cascade.merchant.keys.create({ role: "read", label: "Accountant" });
+await cascade.refunds.create(session.id, { amount: "10.00" });
+await cascade.merchant.keys.create({ role: "read", label: "Accountant" });
 ```
 
-## Use it
+The SDK has no runtime dependencies. The REST API lives under `/v1` and authenticates with `sk_` keys (full) and `rk_` keys (read-only, GET only). For the MCP server, see [docs/mcp.md](docs/mcp.md).
 
-| | Who | How |
-| --- | --- | --- |
-| **Sandbox** | Anyone, instantly | [`/start`](https://cascade.timioni1490.workers.dev/start) creates a real NEAR testnet account for your business, registers it with Cascade and gives you secret keys, the dashboard and the point of sale. Customer payments are simulated; contracts and receipts are real. |
-| **Live** | Businesses | Apply at [`/start`](https://cascade.timioni1490.workers.dev/start). Live keys are issued after a short review; the API and dashboard are the same as in the sandbox. |
-| **Developers** | | [`/developers`](https://cascade.timioni1490.workers.dev/developers): quickstart, API reference, webhooks, x402, MCP. |
+**How NEAR is used, by file**
 
-Live testnet deployment: **[cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev)**: [demo shop](https://cascade.timioni1490.workers.dev/shop), [point of sale](https://cascade.timioni1490.workers.dev/pos), [dashboard](https://cascade.timioni1490.workers.dev/dashboard).
+| NEAR feature | Where |
+| --- | --- |
+| NEAR Intents, 1Click API (`EXACT_OUTPUT`, `appFees`, `customRecipientMsg`, confidentiality) | `packages/oneclick`, `packages/engine/src/checkout.ts` |
+| Cascade app contract: receipts, batches, splits, escrow, allowances | `contracts/app/src/lib.rs`, `contracts/app/src/vault.rs` |
+| Named accounts with function-call keys | `contracts/factory` |
+| Meta-transactions (NEP-366) | `packages/near/src/meta.ts`, `services/relayer` |
+| NEP-413 signed messages (onboarding, payout changes) | `packages/engine/src/checkout.ts`, `apps/web/lib/wallet.ts` |
+| NEP-141 `ft_transfer_call` funding, checked or returned in full | `contracts/app` (`ft_on_transfer`) |
+| Sputnik DAO v2 | `packages/sputnik`, `scripts/sandbox/flows.ts` |
+| NEAR Connect wallet | `apps/web/lib/wallet.ts`, `apps/web/app/dashboard/Wallet.tsx` |
 
-## Product tour
+## Numbers
+
+**Cost to receive $100, by headline fee**
+
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+xychart-beta
+    title "Fee on a $100 payment (USD)"
+    x-axis ["Cascade 0.5%", "Crypto gateway 1%", "Online card 2.9% + $0.30", "Avg. remittance 6.49%"]
+    y-axis "USD" 0 --> 7
+    bar [0.50, 1.00, 3.20, 6.49]
+```
+
+Sources:
+- Card: [Stripe US pricing](https://stripe.com/pricing).
+- Crypto gateway: [Coinbase Commerce](https://help.coinbase.com/en/commerce/getting-started/fees), 1%.
+- Remittance: [World Bank RPW, Q1 2025](https://remittanceprices.worldbank.org/sites/default/files/rpw_main_report_and_annex_q125_1_0.pdf).
+
+On top of Cascade's fee, the customer pays the route cost. On the $1 mainnet test (Base → NEAR) that was 0.47%, and it includes fixed network costs. The merchant receives the exact amount either way.
+
+**Market**
+
+- NEAR Intents passed $30B in all-time volume across 35 chains ([Datawallet, Sept 2026](https://www.datawallet.com/crypto/near-protocol-statistics)).
+- Estimates of filtered stablecoin volume in 2025 range from about $9T ([a16z via DL News](https://www.dlnews.com/articles/markets/stablecoin-volumes-triple-visa-as-a16z-projects-digital-dollars-to-hit-3tn-by-2030/)) to $10.8T ([BCG / Allium](https://digital-assets.fct.bcg.com/)).
+
+**This repository**
 
 | | |
 | --- | --- |
-| ![Landing, light](docs/media/screens/landing.png) | ![Landing, dark](docs/media/screens/landing-dark.png) |
-| **Landing.** Start free in the sandbox, or apply for live access. | **Dark mode.** One toggle in the nav; the cascade follows it. |
-| ![Checkout](docs/media/screens/checkout.png) | ![Receipt](docs/media/screens/receipt.png) |
-| **Checkout.** Any coin on any chain, QR or wallet; the merchant receives exact dollars. | **Receipt.** Four checks recomputed from the chain on every load. |
-| ![Point of sale](docs/media/screens/pos.png) | ![Point of sale, paid](docs/media/screens/pos-paid.png) |
-| **Point of sale.** Type an amount; the customer scans and pays. | **Paid in person.** Green when the money has actually arrived. |
-| ![Dashboard](docs/media/screens/dashboard.png) | ![Hosted invoice](docs/media/screens/invoice.png) |
-| **Dashboard.** Balance, revenue, payments, refunds. | **Invoices.** Line items, due dates, payable in any coin. |
-| ![Subscriptions](docs/media/screens/subscriptions.png) | ![Payouts](docs/media/screens/payouts.png) |
-| **Subscriptions.** Plans, renewals, prepaid periods. | **Payouts.** One batch, every recipient on their own chain. |
-| ![Escrow](docs/media/screens/escrow.png) | ![Agent budgets](docs/media/screens/agents.png) |
-| **Escrow.** Held by the contract, released per milestone. | **Agents.** Budgets with on-chain limits, MCP for assistants. |
-| ![Sandbox sign-up](docs/media/screens/start.png) | ![Mobile](docs/media/screens/mobile-shop.png) |
-| **Sandbox in seconds.** A real testnet account with keys. | **On a phone.** Every page, down to 390px. |
+| TypeScript (non-test) | ~13,000 lines across 8 packages and 6 services |
+| Rust contracts | ~2,900 lines; app contract wasm 428,757 bytes, 38 public methods |
+| Tests | ~2,700 lines: 95 unit, 31 local-node, 41 Rust, 38 demo checks, browser e2e |
+| Runtime dependencies of the SDK | 0 |
+| Worker bundle | ~153 KB gzipped |
 
-## Try it locally
-
-Requirements: Node 22.13+, pnpm 10, internet access for the first run (downloads the NEAR sandbox node, ~90 MB). No keys, no money, no Rust.
-
-```sh
-pnpm i
-pnpm demo     # every story end to end in the terminal, 38 checks, ~80 s
-pnpm dev      # the same stack, clickable: open http://localhost:3000/shop
-pnpm worker:local   # the same, running inside the real Cloudflare Worker runtime with D1, on :8787
+```mermaid
+%%{init: {"theme": "neutral"}}%%
+pie title Automated checks by layer
+    "TypeScript unit" : 95
+    "Rust contract" : 41
+    "Demo checks (local NEAR node)" : 38
+    "Local NEAR node tests" : 31
 ```
-
-### `pnpm dev`: click through it
-
-1. Open http://localhost:3000/shop. You see the demo shop, "Oakline Ceramics", already onboarded as a merchant on the local chain.
-2. Press **Pay with any crypto**. The Cascade checkout opens in a modal (an iframe on the Cascade origin).
-3. Pick **ETH on Base**. You see the exact ETH amount for $25.00 from a (mock) quote, and that the price includes the 0.5% fee while the shop receives exactly $25.00.
-4. Paste any address as your refund address and press **Get payment address**. You see a one-time deposit address and a QR code your phone wallet can scan. With a browser wallet such as MetaMask installed, **Pay with wallet** sends the transaction instead.
-5. Press **Simulate the payment (sandbox)**. Within a few seconds the checkout shows **Paid**; **Verify receipt** opens a page with four green checks recomputed from the chain.
-6. Press Escape. The shop page now says **Order … paid. Shipping soon.** That status comes from the shop's own server, which verified the signed webhook.
-7. Open http://localhost:3000/dashboard and paste the secret key printed in the terminal: sessions, webhook log with retries, CSV export, and **Refund** on any paid session.
-8. In another terminal run `pnpm agent`: an AI agent requests the shop's paid forecast API, receives HTTP 402 with two ways to pay, pays one, and gets the data.
-
-### `pnpm demo`: what it runs
-
-1. **Ada signs up** and gets `ada.cascade.sandbox` from the factory: no seed phrase, NEAR for storage paid by Cascade.
-2. **Ada invoices** a client for $300; **the client pays in ETH on Base**; the settler marks the invoice Paid on-chain. Someone pays her **public link** with SOL; it is recorded as a receipt.
-3. **Ada splits** $200 to Solana, Base (private) and NEAR in one batch with one signature.
-4. **Her studio is a Sputnik DAO** (the real v2 contract from mainnet). It joins Cascade through its own proposal, receives $1,500 from Arbitrum, and runs payroll on three chains after 2 of 3 approvals. A preparer cannot fund it alone; a frozen recipient's $100 goes back to the DAO automatically.
-5. **A ceramics studio onboards to Checkout** with a signed NEP-413 message, creates a session with the SDK, a customer pays in ETH on Base, the shop receives exactly $25.00, a receipt bound to the session is written on-chain, and the shop's server verifies the webhook (and rejects a forged one).
-6. **Revenue split:** the shop's next sale is split 80/15/5 between the shop, an illustrator and the studio DAO, on arrival, with no signatures: $20.00 / $3.75 / $1.25.
-7. **Refund:** $10 goes back to the first customer as ETH on Base; the shop signs twice (create, fund) and receives `refund.succeeded`.
-8. **AI agent:** an agent pays the shop's API over x402 and gets its data; replaying the same payment is refused.
-9. **The rest of the platform:** the shop switches its payout to USDC on Base (signed), bills a café a $467 invoice paid in SOL, starts a subscription with 3 months prepaid, runs an $800 milestone escrow funded from Base (one milestone released, one refunded), and gives an AI agent a $5 budget with on-chain limits that pays over x402 without holding any NEAR.
-10. The accountant's CSV is printed, then 38 checks run. Ada, the approvers, the shop and the customer pay no network fees. The command exits non-zero if any check fails.
-
-## Proof
-
-| What | Where | Link |
-| --- | --- | --- |
-| Live demo (shop, checkout, point of sale, dashboard, sandbox sign-up) | NEAR testnet, Cloudflare | [cascade.timioni1490.workers.dev](https://cascade.timioni1490.workers.dev) |
-| First live checkout: $25.00 paid, receipt #0 recorded on-chain | NEAR testnet | [receipt](https://cascade.timioni1490.workers.dev/r/cs_aIGePC35X1T6gDz0Il) · [transaction](https://testnet.nearblocks.io/txns/2zxX5hs1mhN7BibqsZ9TZwUythmfmqZagzZXC233fY7M) |
-| Contracts (app locked, factory, mock USDC) | NEAR testnet | `deployments/testnet.json` |
-| **$1 paid from Base, received as USDC on NEAR** through NEAR Intents (1Click) | Mainnet | [paid on Base](https://basescan.org/tx/0xd96897cadd46d529d3146471b791d70950f6299857a349f243db1e3e58505edf) → [delivered on NEAR](https://nearblocks.io/txns/FLf4dvUSLR2dEeJTHZXknjSybuipCbSpgSBU4sDqPKr8) ($1.004745 in, $1.00 out) |
-| **$1 sent from NEAR back to Base** through 1Click | Mainnet | [sent on NEAR](https://nearblocks.io/txns/AfevEhJpLCiPBnt5WumWi7nj8CMBvTFxsyXXZqLrLkcL) → [received on Base](https://basescan.org/tx/0x08672264184dedbf01082aa96551f58647074078fc8c3216f132a5dad672992b) ($1.00 in, $0.997398 out) |
-| Full records, including quote signatures and deadlines | Mainnet | [`deployments/mainnet-spikes.json`](deployments/mainnet-spikes.json) |
 
 ## Tests
 
 ```sh
-pnpm test:unit       # 92 TypeScript unit tests (seconds)
-pnpm test:sandbox    # 31 tests against a local NEAR node with real receipts, incl. the deploy script (~2 min)
+pnpm test:unit       # 95 TypeScript unit tests (seconds)
+pnpm test:sandbox    # 31 tests on a local NEAR node, incl. the deploy script (~2 min)
 pnpm test            # both
 pnpm test:contracts  # 41 Rust unit tests (needs Rust)
-pnpm test:e2e        # optional browser test: button, QR, receipt, dashboard (needs Playwright; run pnpm dev first;
-                     # CASCADE_WEB=http://localhost:8787 to test the Worker from pnpm worker:local)
+pnpm test:e2e        # browser test (run pnpm dev first): shop, checkout, receipt, dashboard, invoices, POS, sign-up, phones
 ```
 
-Each safety rule has a test at the contract level (`contracts/app/src/tests.rs`) and on a real node (`contracts/tests/safety.test.ts`):
+Each money-safety rule is tested twice: as a contract unit test (`contracts/app/src/tests.rs`) and on a real node (`contracts/tests/safety.test.ts`).
 
-| Rule | Unit test | Sandbox test |
+| Rule | Unit test | Node test |
 | --- | --- | --- |
 | No line is paid before its batch is funded | `rule1_no_line_is_paid_before_the_batch_is_funded` | `execute_batch on an unfunded batch fails` |
 | No line is ever paid twice | `rule1_no_line_is_ever_paid_twice`, `invariant_holds_under_random_walks` | `two cranks racing in the same block pay each line exactly once` |
-| Only a team's DAO can fund the team's batch; only the owner can fund a personal batch | `rule2_*` | `someone else's ft_transfer_call is returned in full`, `a DAO's preparer cannot fund` |
+| Only a team's DAO can fund the team's batch | `rule2_*` | `a DAO's preparer cannot fund` |
 | Wrong amount or hash: all the money goes back | `rule3_wrong_amount_or_hash_or_token_returns_everything` | `short amount, extra amount and wrong hash are each refunded in full` |
-| Sent + Refunded + Queued always equals the batch total | `rule4_buckets_always_add_up_through_failure_and_refund` | `holds for every batch in this sandbox` |
-| A split always pays out exactly what arrived; unknown splits are refunded | `split_parts_always_add_up_and_never_overflow`, `split_rejections_return_everything` | `the contract refunds payments to an unknown split in full, and splits valid ones exactly` |
+| Sent + refunded + queued always equals the batch total | `rule4_buckets_always_add_up_through_failure_and_refund` | `holds for every batch in this sandbox` |
+| A split pays out exactly what arrived; unknown splits are refunded | `split_parts_always_add_up_and_never_overflow` | `the contract refunds payments to an unknown split in full` |
 
-## How NEAR is used
+## Security model
 
-| NEAR feature | Where | What it does for the user |
-| --- | --- | --- |
-| NEAR Intents via the 1Click API | `packages/oneclick`, `packages/engine` | Customer pays with any coin on any chain; the merchant receives exactly the USDC asked for (`EXACT_OUTPUT`). Payouts and refunds reach any chain |
-| 1Click `customRecipientMsg` | `packages/engine/src/checkout.ts` | Delivers a payment straight into an on-chain revenue split (experimental in 1Click; mainnet test pending) |
-| 1Click `appFees` | `packages/engine/src/checkout.ts` | A transparent Cascade fee paid by the customer |
-| x402 v2 (with NEAR Intents as the rail) | `packages/sdk/src/x402.ts`, `packages/engine/src/x402.ts` | AI agents pay per request with any coin; the merchant gets USDC on NEAR |
-| NEP-413 signed messages | `packages/engine/src/checkout.ts` | Merchant onboarding proves control of the receiving account (or DAO preparer role) |
-| Confidential Intents | `packages/oneclick/src/intents.ts` (`confidentiality: "basic"`) | Private payout lines. Needs the 1Click partner JWT; not yet tested on mainnet ([spikes](docs/spikes.md)) |
-| Meta-transactions (NEP-366) | `packages/near/src/meta.ts`, `services/relayer` | Users, merchants and DAO approvers never pay gas |
-| Named accounts | `contracts/factory` | `ada.cascade.near` is the payment address. No seed phrase |
-| Function-call access keys | `contracts/factory` (`app_key`) | Everyday actions are signed by a key that can only call Cascade |
-| Sputnik DAO v2 | `packages/sputnik`, `scripts/sandbox/flows.ts` | Teams keep custody; payroll is one proposal; members vote fee-free; a DAO can be a split recipient |
-| NEP-141 `ft_transfer_call` | `contracts/app` `ft_on_transfer` | Funding a batch or paying into a split is one transfer that the contract checks or returns in full |
+Nothing Cascade runs can move money anywhere it was not already headed. Details: [docs/threat-model.md](docs/threat-model.md).
 
-## What works today
+- **Custody:** checkout money goes from 1Click to the merchant, its DAO or its split, never to Cascade. The app contract is deployed **locked** (no access keys) and has no admin withdrawal.
+- **Who can move money:** an owner (its own batches and refunds), a DAO (after its vote), and the contract (only to locked lines, split shares, escrow parties and allowance payees).
+- **Keys:** merchant API keys are stored hashed. Changing the payout destination needs the merchant's NEP-413 signature. The dashboard signs with the merchant's own wallet.
+- **Webhooks:** HMAC-SHA256 with a timestamp. An x402 payment unlocks one response for one URL, and replays are refused.
+- **Relayer:** pays gas only for an allowlist of calls, with rate limits. It cannot change what users signed.
+- **Settler:** trusted to report what 1Click delivered. It only writes records, each deposit address once.
 
-| Piece | State |
-| --- | --- |
-| App contract: owners, invoices, link receipts, batches, chunked payouts, refunds, quote deadlines, revenue splits, milestone escrow, agent allowances | Done, unit and sandbox tested |
-| Name factory with limited app key and USDC registration | Done, tested |
-| 1Click client, Cascade quoting rules, MockOneClick | Done; real API checked with free dry quotes ([research](docs/research.md)) |
-| Relayer (NEP-366) with allowlist and rate limits; settler crank (discovers split payouts) | Done, tested |
-| Checkout API: onboarding, keys, idempotent sessions, expiry, fees, splits, refunds, x402, receipts, webhook log, CSV | Done, unit and sandbox tested |
-| Billing: payout preference (signed), invoices, plans, subscriptions with renewals and prepaid periods, customers, read-only keys, escrow-funded checkout, x402 from on-chain agent allowances | Done, unit and sandbox tested; dashboard and hosted invoice page browser-tested |
-| `@cascade/sdk`: server client, webhooks, Pay button, EVM wallet payments, QR payment URIs, x402 guard and client | Done, tested; no runtime dependencies |
-| Web: landing page, hosted checkout (steps, fee shown upfront, QR, wallet pay), paper receipt with live checks, merchant dashboard (balance, revenue chart, payments, refunds, webhooks, CSV), demo shop, x402 demo API | Done, browser-tested at desktop and phone widths |
-| Testnet demo mode (`CASCADE_ONECLICK=mock`) and demo-merchant setup script | Done; refused on mainnet (tested) |
-| Cloudflare: one Worker (pages, API, relayer, demo shop) on D1 with a cron settler, free plan | Done; browser e2e, x402 agent and cron run against the Worker locally (`pnpm worker:local`) ([hosting](docs/hosting.md)) |
-| Node server alternative (same platform code), Dockerfile | Done; browser e2e against it (`pnpm dev:static`) |
-| Deploy and mainnet test scripts | Done; deploy rehearsed on a local node ([runbook](docs/mainnet-runbook.md)) |
-| Solana (Phantom) and NEAR wallet buttons | Not yet: those payers use the QR code or the deposit address |
-| AI assistant on NEAR AI Cloud | Cut |
-| Testnet deployment, hosting, mainnet 1Click proof | Ready to run; each step needs approval ([runbook](docs/mainnet-runbook.md)) |
+## Repository layout
 
-Mainnet transaction links will be listed here once they exist.
+```
+contracts/      app (receipts, batches, splits, escrow, allowances), factory, Rust tests, prebuilt wasm (res/)
+packages/       core · db (store: SQLite, D1, memory) · engine (checkout, billing, refunds, x402)
+                near · oneclick · sputnik · sdk (public SDK, 0 deps) · mcp (MCP server)
+services/       api (/v1) · relayer · settler · platform (composition) · worker (Cloudflare) · server (Node)
+apps/web/       Next.js static export: landing, checkout, receipt, invoice, shop, POS, dashboard, start, developers
+scripts/        demo, local sandbox, deploy, mainnet tests (spike), Cloudflare config, e2e
+docs/           architecture, threat model, research, spikes, runbooks, MCP, demo brief, media
+deployments/    contract ids per network, mainnet test records
+```
 
-## Threat model
+## Deploy and host
 
-Our servers can delay things and the settler can wrongly mark an invoice paid, but nothing we run can move money anywhere it was not already headed. Details: [docs/threat-model.md](docs/threat-model.md).
-
-- **Who can move money:** an owner (their own batches and refunds), a DAO (after its vote), and the app contract (only to locked lines and split shares, and refunds only to the owner). No admin withdrawal exists; the app account has no keys.
-- **Settler:** trusted to report what 1Click delivered; it only writes records, each deposit address once.
-- **Relayer:** pays gas for an allowlist of calls; it cannot change what users signed.
-- **Checkout:** Cascade never receives checkout money (1Click's recipient is the merchant or its split). Secret keys are stored hashed; webhooks are HMAC-signed with a timestamp; refunds need the merchant's own signatures; an x402 payment unlocks one response for one URL.
-- **Keys in the browser:** a lost browser means a lost account until the user backs up the key; the web app must prompt for that.
-
-## Deploying (testnet, then mainnet)
-
-`pnpm deploy:cascade` and `pnpm spike <name>` run from your machine with keys in `.env`; every transaction is shown and needs a typed `yes`. The app contract is deployed **locked** (no access keys), so nobody can change it or move its funds. Step by step: [docs/mainnet-runbook.md](docs/mainnet-runbook.md). The deploy script itself is tested against a local node (`contracts/tests/deploy.test.ts`).
-
-## Hosting
-
-One deployment serves everything: the pages, the checkout API (`/v1`), the relayer (`/relayer`), the demo shop and the settler. On **Cloudflare** it is one Worker with D1 and a cron trigger, on the free plan; nothing needs to stay up on your machine. The same platform code also runs as one Node process (`pnpm backend`, or Docker). Contract ids come from `deployments/<network>.json`, secrets from `.env`.
+One deployment serves the pages, the API (`/v1`), the relayer, the demo shop and the settler. On Cloudflare this is one Worker with D1 and a cron trigger, on the free plan. The same code also runs as a Node process or in Docker.
 
 ```sh
-pnpm cf:configure --url https://cascade.<you>.workers.dev --database-id <id>
+pnpm deploy:cascade                                   # contracts; every transaction needs a typed "yes"
+pnpm cf:configure --url https://<host> --database-id <id>
 pnpm cf:deploy
 ```
 
-Step by step, limits and settings: [docs/hosting.md](docs/hosting.md).
+Keys live only in `.env` (git-ignored); [`.env.example`](.env.example) lists every setting. Step-by-step guides: [docs/mainnet-runbook.md](docs/mainnet-runbook.md) and [docs/hosting.md](docs/hosting.md).
+
+## Status and limits
+
+- **Network.** The public app runs on NEAR testnet, so swaps there are simulated. Mainnet 1Click payments in both directions are verified. Deploying the contracts on mainnet locks about 15-20 NEAR of storage, and should follow an audit.
+- **Not yet verified on mainnet:**
+  - delivery into a revenue split through `customRecipientMsg`,
+  - private payouts (Confidential Intents),
+  - the full Cascade fee with the partner key (the dry check is `pnpm spike feecheck`).
+- **Wallets.** Payers on Solana and NEAR pay by QR or deposit address. The one-click wallet button covers EVM wallets.
+- **Live accounts.** Live access is by application and manual review.
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md): money flow, owners, repository layout, design decisions
+- [docs/architecture.md](docs/architecture.md): money flow, owners, design decisions
 - [docs/threat-model.md](docs/threat-model.md)
-- [docs/research.md](docs/research.md): hackathon rules, 1Click, x402 and NEAR facts we verified, gotchas found
-- [docs/spikes.md](docs/spikes.md): the mainnet tests still to run
-- [docs/mainnet-runbook.md](docs/mainnet-runbook.md) and [docs/hosting.md](docs/hosting.md)
-- [docs/demo-script.md](docs/demo-script.md): the demo video script, shot by shot
+- [docs/research.md](docs/research.md): 1Click, x402 and NEAR facts verified, with gotchas
+- [docs/spikes.md](docs/spikes.md): mainnet tests and results
+- [docs/mainnet-runbook.md](docs/mainnet-runbook.md) · [docs/hosting.md](docs/hosting.md) · [docs/mcp.md](docs/mcp.md)
 - [docs/upstream-reports.md](docs/upstream-reports.md): issues found in Sputnik DAO, near-sdk and 1Click, with reproductions
-- [contracts/res/README.md](contracts/res/README.md): where each wasm comes from
-
-## Built at NEAR HACKATHON
-
-Tracks: Real-World Money (`realworld`), Social Money (`social`). See [HACKATHON.md](HACKATHON.md) for the code diff and disclosures.
+- [docs/demo-script.md](docs/demo-script.md): demo video brief
+- [HACKATHON.md](HACKATHON.md): tracks, code written during the event, AI-written code, libraries
 
 ## License
 

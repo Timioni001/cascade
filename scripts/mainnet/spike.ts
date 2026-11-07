@@ -13,6 +13,8 @@
  *   name      [--name spike-<random>]   relayer creates <name>.<root> with the deployed factory
  *   relay     the name from `name` registers with Cascade through the relayer (fee-free)
  *   split     --refund-to <your address>  pay $1 into a revenue split via customRecipientMsg (needs name + relay)
+ *   feecheck  [--amount 100] [--to <NEAR account>]  dry quotes only, nothing is sent: is the Cascade fee
+ *             (CASCADE_FEE_BPS) passed through in full, or does 1Click add its own share? Needs no approval.
  *
  * Results (no keys) are appended to deployments/<network>-spikes.json.
  */
@@ -306,6 +308,31 @@ async function split(cfg: NetConfig, io: Io, oc: OneClick, a: Args) {
   recordSpike(cfg.network, { spike: "split", splitId, account: id, depositAddress: dep, correlationId: real.correlationId, splitBatch: found, ...(s ? summarize(s) : { status: "unknown" }) });
 }
 
+/**
+ * Spike 8, the free half: a dry quote (no deposit address, nothing sent) with
+ * our appFees. Without a partner JWT 1Click appends its own fee; with one,
+ * only ours should come back. Delivery of the fee itself needs a real payment.
+ */
+async function feecheck(cfg: NetConfig, io: Io, oc: OneClick, a: Args) {
+  const bps = Number(process.env.CASCADE_FEE_BPS ?? 50);
+  const recipient = process.env.CASCADE_FEE_RECIPIENT?.trim();
+  if (!recipient) throw new Error("set CASCADE_FEE_RECIPIENT (the NEAR account that receives the fee) in .env");
+  const amount = parseUsd(str(a, "amount", "100"));
+  const to = str(a, "to", cfg.root.id);
+  io.step(`Fee check: dry quote for $${formatUsd(amount)} from USDC on Base to ${to}, Cascade fee ${bps} bps to ${recipient}`);
+  io.log(cfg.oneclickJwt ? "partner JWT: set" : "partner JWT: NOT set");
+  const req = incomingQuote({ payAsset: USDC_BY_CHAIN.base!, owner: to, amountOut: amount, refundTo: "0x000000000000000000000000000000000000dEaD", dry: true, appFee: { recipient, bps } });
+  const q = await oc.quote(req);
+  showQuote(io, req, q);
+  const fees = q.quoteRequest.appFees ?? [];
+  for (const f of fees) io.log(`  appFee ${f.fee} bps -> ${f.recipient}`);
+  const ours = fees.filter((f) => f.recipient === recipient).reduce((t, f) => t + f.fee, 0);
+  const theirs = fees.filter((f) => f.recipient !== recipient).reduce((t, f) => t + f.fee, 0);
+  const verdict = ours === bps && theirs === 0 ? "full fee passed through, nothing added by 1Click" : theirs > 0 ? `1Click adds ${theirs} bps of its own` : `our fee came back as ${ours} bps`;
+  io.log(`result: ${verdict}`);
+  recordSpike(cfg.network, { spike: "feecheck", jwt: Boolean(cfg.oneclickJwt), bps, recipient, amount: formatUsd(amount), amountIn: q.quote.amountInFormatted, appFees: fees, verdict });
+}
+
 // ------------------------------------------------------------ CLI
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   loadEnv();
@@ -321,6 +348,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     else if (cmd === "name") await name(cfg, io, a);
     else if (cmd === "relay") await relay(cfg, io);
     else if (cmd === "split") await split(cfg, io, oc, a);
+    else if (cmd === "feecheck") await feecheck(cfg, io, oc, a);
     else if (cmd === "status") {
       const s = await oc.status(str(a, "deposit"));
       console.log(JSON.stringify(summarize(s), null, 2));
