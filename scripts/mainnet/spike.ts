@@ -353,7 +353,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       const s = await oc.status(str(a, "deposit"));
       console.log(JSON.stringify(summarize(s), null, 2));
     } else {
-      console.log("usage: pnpm spike <incoming|expired|outgoing|private|name|relay|split|status> [options]  (see scripts/mainnet/spike.ts)");
+      console.log("usage: pnpm spike <incoming|expired|outgoing|private|name|relay|split|feecheck|status> [options]  (see scripts/mainnet/spike.ts)");
       process.exitCode = 1;
     }
   } catch (e) {
