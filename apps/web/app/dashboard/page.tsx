@@ -116,6 +116,7 @@ export default function Dashboard() {
   const [created, setCreated] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   useEffect(() => setKey(readKey()), []);
 
@@ -134,7 +135,17 @@ export default function Dashboard() {
       setHooks(h.data);
       setBalance(b?.usdc ?? null);
     } catch (e) {
-      setError((e as Error).message);
+      if ((e as { status?: number }).status === 401) {
+        // The key is wrong or was revoked: forget it and ask again.
+        try {
+          sessionStorage.removeItem(KEY);
+        } catch {
+          /* private mode */
+        }
+        setKey("");
+        setMe(null);
+        setSignInError("That key was not accepted. It may be mistyped or revoked.");
+      } else setError((e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -182,7 +193,9 @@ export default function Dashboard() {
               <p className="soft small" style={{ margin: "8px 0 0" }}>Paste your secret key (sk_…). It stays in this browser tab and is sent only to the Cascade API.</p>
             </div>
             <input className="input" type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="sk_live_… or a read-only rk_live_…" aria-label="Secret key" />
-            <button className="btn block" disabled={!/^(sk|rk)_/.test(input)} onClick={() => { try { sessionStorage.setItem(KEY, input); } catch { /* private mode */ } setKey(input); }}>Open dashboard</button>
+            <button className="btn block" disabled={!/^(sk|rk)_/.test(input.trim())} onClick={() => { const k = input.trim(); try { sessionStorage.setItem(KEY, k); } catch { /* private mode */ } setSignInError(null); setInput(""); setKey(k); }}>Open dashboard</button>
+            {signInError && <div className="tiny error">{signInError}</div>}
+            <div className="tiny muted">No key yet? <a href="/start">Create a sandbox account</a> in a few seconds.</div>
           </div>
         </main>
       </div>
@@ -244,7 +257,10 @@ export default function Dashboard() {
           <div className="row" style={{ flexWrap: "wrap" }}>
             <div>
               <div className="h1">{greeting()}, {me?.name ?? "…"}</div>
-              <div className="small muted" style={{ marginTop: 4 }}>Settles as USDC {me?.payout ? <>on {chainName(me.payout.chain)} to <span className="mono">{me.payout.address}</span></> : <>on NEAR to <span className="mono">{me?.account}</span></>}</div>
+              <div className="row-start" style={{ marginTop: 6, flexWrap: "wrap", gap: 8 }}>
+                <span className="key-chip" title="Signed in with this key in this browser tab only">{key.includes("_test_") ? "Sandbox" : "Live"} key · {key.startsWith("rk_") ? "read-only" : "full access"} · …{key.slice(-4)}</span>
+              </div>
+              <div className="small muted" style={{ marginTop: 6 }}>Settles as USDC {me?.payout ? <>on {chainName(me.payout.chain)} to <span className="mono">{me.payout.address}</span></> : <>on NEAR to <span className="mono">{me?.account}</span></>}</div>
             </div>
             <div className="row-start">
               <button className="icon-btn" onClick={() => void load()} aria-label="Refresh">{loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}</button>

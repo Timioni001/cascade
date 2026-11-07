@@ -65,46 +65,58 @@ const session = await cascade.checkout.create({
 // browser: openCheckout({ sessionUrl: session.url })
 // webhook: verifyWebhook(body, header, secret) -> ship it`;
 
-/** Coins float over the cascade. Monochrome: the logo's own shape, in ink. */
-const floaters: { c: string; x: number; y: number; size: number; delay: number }[] = [
-  { c: "btc", x: 44, y: 2, size: 46, delay: 0 },
-  { c: "eth", x: 78, y: 20, size: 40, delay: 1.1 },
-  { c: "sol", x: 88, y: 56, size: 34, delay: 2.2 },
-  { c: "usdc", x: 62, y: 82, size: 42, delay: 0.6 },
-  { c: "usdt", x: 28, y: 88, size: 34, delay: 1.7 },
-  { c: "xrp", x: 4, y: 60, size: 40, delay: 2.8 },
-  { c: "doge", x: 10, y: 24, size: 36, delay: 1.4 },
-  { c: "bnb", x: 22, y: 50, size: 32, delay: 2.4 },
+/**
+ * Coins sit on and just outside the rim of the sphere, placed by angle so they
+ * stay on the circle at any size. `a`: degrees clockwise from 3 o'clock;
+ * `r`: distance from the centre as a fraction of the half-width (the dots end at 0.84).
+ */
+const rimCoins: { c: string; t: string; a: number; r: number }[] = [
+  { c: "btc", t: "BTC", a: -98, r: 0.9 },
+  { c: "eth", t: "ETH", a: -42, r: 0.94 },
+  { c: "sol", t: "SOL", a: 8, r: 0.96 },
+  { c: "usdc", t: "USDC", a: 52, r: 0.9 },
+  { c: "usdt", t: "USDT", a: 104, r: 0.92 },
+  { c: "xrp", t: "XRP", a: 148, r: 0.94 },
+  { c: "bnb", t: "BNB", a: 192, r: 0.96 },
+  { c: "doge", t: "DOGE", a: 236, r: 0.92 },
 ];
+const at = (a: number, r: number) => ({ left: `${50 + 50 * r * Math.cos((a * Math.PI) / 180)}%`, top: `${50 + 50 * r * Math.sin((a * Math.PI) / 180)}%` });
 
 /**
- * The hero: the cascade of dots with coins floating over it, and the receipt
- * off to the side. Monochrome on purpose, so colour only ever means status.
+ * The hero: a sphere of dots with the coins people pay with around it, one
+ * payment's route drawn across it, and the receipt underneath. Monochrome on
+ * purpose, so colour only ever means status.
  */
 function HeroPreview() {
   return (
     <div className="hero-preview" aria-hidden="true">
       <div className="globe">
-        <DotOrb size={430} points={2600} />
-        {floaters.map(({ c, x, y, size, delay }) => (
-          <span
-            key={c}
-            className="coin-float"
-            style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, animationDelay: `${delay}s` }}
-          >
+        <DotOrb size={460} points={2600} />
+        <svg className="globe-route" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M28 38 Q 50 14 72 32" />
+          <circle cx="28" cy="38" r="1.6" />
+          <circle cx="72" cy="32" r="1.6" />
+        </svg>
+        <span className="route-dot" style={{ left: "28%", top: "38%" }} />
+        <span className="route-dot end" style={{ left: "72%", top: "32%" }} />
+        {rimCoins.map(({ c, t, a, r }, i) => (
+          <span key={c} className="coin-pill" style={{ ...at(a, r), animationDelay: `${(i % 4) * 0.9}s` }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/coins/${c}.svg`} alt="" width={size} height={size} />
+            <img src={`/coins/${c}.svg`} alt="" width={18} height={18} />
+            {t}
           </span>
         ))}
+        <div className="globe-pay">
+          <span className="muted">ETH on Base</span>
+          <span className="globe-arrow">→</span>
+          <strong>$25.00 USDC</strong>
+          <span className="muted">on NEAR</span>
+        </div>
       </div>
-      <div className="globe-chip chip-paid">
-        <span className="net-dot" />
-        <span><strong>$25.00</strong> USDC received</span>
-      </div>
-      <div className="globe-chip chip-receipt">
+      <div className="globe-receipt">
         <span className="stub-perf" />
         <FileCheck2 size={14} />
-        <span>Receipt #128 on NEAR</span>
+        <span>Receipt #128 recorded on NEAR</span>
         <Check size={13} />
       </div>
     </div>

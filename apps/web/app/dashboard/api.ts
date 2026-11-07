@@ -8,7 +8,7 @@ export async function call<T>(key: string, path: string, body?: unknown): Promis
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const j = (await r.json().catch(() => ({}))) as T & { error?: { message: string } };
-  if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(j.error?.message ?? `HTTP ${r.status}`), { status: r.status });
   return j;
 }
 

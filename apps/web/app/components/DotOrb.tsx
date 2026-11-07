@@ -102,5 +102,5 @@ export function DotOrb({ size = 420, points = 1150, className }: { size?: number
     };
   }, [size, points]);
 
-  return <canvas ref={ref} className={className} style={{ width: size, height: size, maxWidth: "100%" }} aria-hidden="true" />;
+  return <canvas ref={ref} className={className} style={{ width: "100%", height: "auto", aspectRatio: "1 / 1", display: "block" }} aria-hidden="true" />;
 }

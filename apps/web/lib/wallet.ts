@@ -17,6 +17,27 @@ export interface Deployment {
 
 let deployment: Promise<Deployment> | null = null;
 let connector: Promise<Connector> | null = null;
+/** The last connected account, so the page can show it without loading the connector. */
+const REMEMBER = "cascade-wallet-account";
+const remember = (a: string | null) => {
+  try {
+    if (a) localStorage.setItem(REMEMBER, a);
+    else localStorage.removeItem(REMEMBER);
+  } catch {
+    /* storage blocked */
+  }
+};
+
+/** NEAR Connect signs with Ed25519 in WebCrypto, which some older mobile browsers lack. */
+async function supported(): Promise<boolean> {
+  try {
+    await crypto.subtle.generateKey({ name: "Ed25519" } as unknown as AlgorithmIdentifier, false, ["sign", "verify"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+const UNSUPPORTED = "This browser cannot run the NEAR wallet connector. Update it, or use Chrome, Edge, Firefox or Safari on a computer.";
 
 /** Contract ids and network, from the server this page is served with. */
 export function getDeployment(): Promise<Deployment> {
@@ -30,17 +51,20 @@ export function getDeployment(): Promise<Deployment> {
 
 function getConnector(): Promise<Connector> {
   connector ??= (async () => {
+    if (!(await supported())) throw new Error(UNSUPPORTED);
     const [{ NearConnector }, d] = await Promise.all([import("@hot-labs/near-connect"), getDeployment()]);
     return new NearConnector({ network: d.network, footerBranding: null });
   })();
+  connector.catch(() => {
+    connector = null; // let a later click try again
+  });
   return connector;
 }
 
-/** The connected account, or null. Does not prompt. */
-export async function connectedAccount(): Promise<string | null> {
+/** The account connected last time, without loading anything. */
+export function rememberedAccount(): string | null {
   try {
-    const { accounts } = await (await getConnector()).getConnectedWallet();
-    return accounts[0]?.accountId ?? null;
+    return localStorage.getItem(REMEMBER);
   } catch {
     return null;
   }
@@ -52,11 +76,13 @@ export async function connectWallet(): Promise<string> {
   const w = await c.connect();
   const [a] = await w.getAccounts();
   if (!a) throw new Error("the wallet returned no account");
+  remember(a.accountId);
   return a.accountId;
 }
 
 export async function disconnectWallet(): Promise<void> {
-  await (await getConnector()).disconnect().catch(() => {});
+  remember(null);
+  if (connector) await (await connector).disconnect().catch(() => {});
 }
 
 const TGAS = "000000000000";

@@ -2,19 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Wallet as WalletIcon } from "lucide-react";
-import { connectWallet, connectedAccount, disconnectWallet } from "../../lib/wallet";
+import { connectWallet, disconnectWallet, rememberedAccount } from "../../lib/wallet";
 
 /** The merchant's NEAR wallet, shared by every tab that needs a signature. */
 export function useWallet() {
   const [account, setAccount] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let live = true;
-    void connectedAccount().then((a) => live && setAccount(a));
-    return () => {
-      live = false;
-    };
-  }, []);
+  // Show the last account at once; the connector itself loads only on "Connect" or when signing.
+  useEffect(() => setAccount(rememberedAccount()), []);
   return {
     account,
     busy,

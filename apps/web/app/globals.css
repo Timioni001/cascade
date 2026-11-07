@@ -203,8 +203,14 @@ button { font: inherit; color: inherit; }
 }
 @media (max-width: 900px) {
   .dash { grid-template-columns: 1fr !important; }
-  .dash-side { flex-direction: row !important; flex-wrap: wrap; align-items: center; border-right: 0 !important; border-bottom: 1px solid var(--line); position: static !important; height: auto !important; }
-  .dash-side nav { display: flex !important; }
+  .dash-side { display: grid !important; grid-template-columns: 1fr auto; align-items: center; gap: 10px !important; padding: 12px 16px 0 !important; border-right: 0 !important; border-bottom: 1px solid var(--line); position: sticky !important; top: 0; z-index: 20; height: auto !important; background: var(--bg); }
+  .dash-side > nav { grid-column: 1 / -1; grid-row: 2; display: flex !important; gap: 4px !important; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 10px; }
+  .dash-side > nav::-webkit-scrollbar { display: none; }
+  .dash-side > nav > div { display: contents !important; }
+  .dash-side > nav .tiny { display: none; }
+  .dash-side .nav-item { flex: none; white-space: nowrap; }
+  .dash-side > button { margin-top: 0 !important; grid-column: 2; grid-row: 1; }
+  .dash > main { padding: 20px 16px 48px !important; }
   .dash-two { grid-template-columns: 1fr !important; }
 }
 
@@ -283,34 +289,44 @@ button { font: inherit; color: inherit; }
 .nav-menu-sheet a:hover { background: var(--card-2); color: var(--ink); }
 @media (max-width: 860px) { .nav-menu { display: block; } }
 
-/* ---------- hero: the dot cascade, monochrome */
-.hero-preview { position: relative; display: grid; place-items: center; padding: 28px 0; }
-.globe { position: relative; width: min(100%, 430px); aspect-ratio: 1; display: grid; place-items: center; }
+/* ---------- hero: the globe, monochrome */
+.hero-preview { position: relative; display: grid; justify-items: center; gap: 18px; padding: 24px 0; }
+/* Room on each side for the coin pills that sit on the rim. */
+.globe { position: relative; width: min(calc(100% - 72px), 440px); aspect-ratio: 1 / 1; }
+.globe > canvas { position: absolute; inset: 0; }
 
-/* Coins drift over the sphere. The logos are single-colour, so dark mode just inverts them. */
-.coin-float { position: absolute; display: grid; place-items: center; margin: -5% 0 0 -5%; animation: bob 7s ease-in-out infinite; }
-.coin-float img { width: 100%; height: 100%; opacity: .92; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--ink) 22%, transparent)); }
-@keyframes bob { 0%, 100% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
+.coin-pill { position: absolute; z-index: 2; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 6px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.75rem; font-weight: 600; letter-spacing: .01em; white-space: nowrap; animation: pill-bob 7s ease-in-out infinite; }
+.coin-pill img { width: 18px; height: 18px; }
+@keyframes pill-bob { 0%, 100% { transform: translate(-50%, calc(-50% - 3px)); } 50% { transform: translate(-50%, calc(-50% + 3px)); } }
 
-/* Cards sit in the corners the circle leaves empty, clear of the sphere. */
-.globe-chip { position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 11px 15px; border-radius: var(--r-md); background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.8125rem; font-weight: 500; animation: float-in .6s cubic-bezier(.2,.7,.2,1) both; }
-.chip-paid { top: 0; right: 0; animation-delay: .35s; }
-.chip-receipt { bottom: 0; left: 0; animation-delay: .55s; }
+/* One payment's route across the sphere. */
+.globe-route { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.globe-route path { fill: none; stroke: var(--ink); stroke-width: .5; stroke-dasharray: 1.2 1.6; vector-effect: non-scaling-stroke; stroke-width: 1.5; opacity: .7; animation: route 2.4s linear infinite; }
+.globe-route circle { display: none; }
+@keyframes route { to { stroke-dashoffset: -28; } }
+.route-dot { position: absolute; z-index: 1; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ink) 14%, transparent); }
+.route-dot.end { background: var(--card); border: 3px solid var(--ink); }
+
+.globe-pay { position: absolute; z-index: 3; left: 50%; top: 56%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.8125rem; white-space: nowrap; }
+.globe-arrow { font-weight: 600; }
+
+.globe-receipt { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 11px 15px; border-radius: var(--r-md); background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.8125rem; font-weight: 500; animation: float-in .6s .4s cubic-bezier(.2,.7,.2,1) both; }
 .stub-perf { position: absolute; left: 14px; right: 14px; top: -1px; border-top: 1.5px dashed var(--line-strong); }
 
-@media (prefers-reduced-motion: reduce) { .coin-float { animation: none; } }
-@media (max-width: 900px) {
-  .globe { width: min(100%, 320px); }
-  .globe-chip { font-size: 0.75rem; padding: 9px 12px; }
-  .chip-paid { top: -6px; right: -6px; }
-  .chip-receipt { bottom: -6px; left: -6px; }
+@media (prefers-reduced-motion: reduce) { .coin-pill, .globe-route path { animation: none; } }
+@media (max-width: 560px) {
+  .globe { width: min(calc(100% - 64px), 340px); }
+  .coin-pill { font-size: 0.6875rem; padding: 4px 9px 4px 5px; }
+  .coin-pill img { width: 15px; height: 15px; }
+  .globe-pay { font-size: 0.75rem; padding: 8px 12px; gap: 6px; top: 62%; }
+  .globe-pay .muted:last-child { display: none; }
 }
 
 @media (max-width: 560px) { .net-chip { display: none; } .nav-inner { gap: 8px; } }
 
 /* The coin logos ship black; dark mode flips them to white. */
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); } }
-:root[data-theme="dark"] .coin-float img { filter: invert(1) drop-shadow(0 6px 14px rgba(0,0,0,.55)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .coin-pill img { filter: invert(1); } }
+:root[data-theme="dark"] .coin-pill img { filter: invert(1); }
 
 /* ---------- operator view (/admin, unlinked) */
 .admin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -319,3 +335,5 @@ button { font: inherit; color: inherit; }
 .admin-wrap { max-width: 360px; white-space: pre-wrap; }
 .admin-title { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; }
 .wallet-bar { flex-wrap: wrap; gap: 10px; }
+
+.key-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 0.75rem; color: var(--muted); }
