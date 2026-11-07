@@ -450,7 +450,7 @@ Keys live only in `.env` (git-ignored); [`.env.example`](.env.example) lists eve
 - [docs/mainnet-runbook.md](docs/mainnet-runbook.md) · [docs/hosting.md](docs/hosting.md) · [docs/mcp.md](docs/mcp.md)
 - [docs/upstream-reports.md](docs/upstream-reports.md): issues found in Sputnik DAO, near-sdk and 1Click, with reproductions
 - [docs/demo-script.md](docs/demo-script.md): demo video brief
-- [HACKATHON.md](HACKATHON.md): tracks, code written during the event, AI-written code, libraries
+- [HACKATHON.md](HACKATHON.md): tracks, submission summary, libraries
 
 ## License
 

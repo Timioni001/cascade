@@ -33,10 +33,6 @@
 
 **Not yet verified on mainnet:** revenue-split delivery via `customRecipientMsg`, private payouts, and the full Cascade fee (a dry quote on mainnet shows 1Click keeps half of it, with or without our key).
 
-## AI-written code
-
-Most of the code was written by Claude Code (Anthropic) working with the team lead, who directed the design and reviewed it. AI-written: all contracts, packages, services, scripts, tests and docs in this repository.
-
 ## Libraries and third-party code
 
 | Name | Version | Use |
