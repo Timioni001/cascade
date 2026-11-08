@@ -6,6 +6,7 @@ import type { CheckoutSession, RefundInfo } from "@cascade/sdk";
 import { Badge, Brand, DemoBanner, chainName, toneOf, usd } from "../components/ui";
 import { API } from "../../lib/api";
 import { call } from "./api";
+import { clearKey, isTestKey, readKey, saveKey } from "../../lib/session";
 import { CustomersTab, InvoicesTab, SubscriptionsTab } from "./Billing";
 import { SettingsTab } from "./Settings";
 import { AgentsTab, EscrowTab, PayoutsTab } from "./MoneyOut";
@@ -15,14 +16,6 @@ type Webhook = { id: string; type: string; status: string; attempts: number; las
 type Me = { name: string; account: string; webhookUrl: string | null; payout: { chain: string; address: string } | null };
 type Tab = "overview" | "payments" | "invoices" | "subscriptions" | "customers" | "splits" | "payouts" | "escrow" | "agents" | "webhooks" | "reports" | "settings";
 
-const KEY = "cascade_dashboard_key";
-const readKey = () => {
-  try {
-    return sessionStorage.getItem(KEY) ?? "";
-  } catch {
-    return "";
-  }
-};
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -103,6 +96,9 @@ function SessionsTable({ sessions, onRefund, compact }: { sessions: CheckoutSess
 
 export default function Dashboard() {
   const [key, setKey] = useState("");
+  // False until the saved key has been read: avoids flashing the sign-in form.
+  const [ready, setReady] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [input, setInput] = useState("");
   const [me, setMe] = useState<Me | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
@@ -119,7 +115,10 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
 
-  useEffect(() => setKey(readKey()), []);
+  useEffect(() => {
+    setKey(readKey());
+    setReady(true);
+  }, []);
 
   const load = useCallback(async () => {
     if (!key) return;
@@ -138,11 +137,7 @@ export default function Dashboard() {
     } catch (e) {
       if ((e as { status?: number }).status === 401) {
         // The key is wrong or was revoked: forget it and ask again.
-        try {
-          sessionStorage.removeItem(KEY);
-        } catch {
-          /* private mode */
-        }
+        clearKey();
         setKey("");
         setMe(null);
         setSignInError("That key was not accepted. It may be mistyped or revoked.");
@@ -173,14 +168,12 @@ export default function Dashboard() {
   };
 
   const signOut = () => {
-    try {
-      sessionStorage.removeItem(KEY);
-    } catch {
-      /* private mode */
-    }
+    clearKey();
     setKey("");
     setMe(null);
   };
+
+  if (!ready) return <div className="page" />;
 
   if (!key) {
     return (
@@ -191,10 +184,14 @@ export default function Dashboard() {
           <div className="card raised stack-lg">
             <div>
               <h1 className="h1">Merchant dashboard</h1>
-              <p className="soft small" style={{ margin: "8px 0 0" }}>Paste your secret key (sk_…). It stays in this browser tab and is sent only to the Cascade API.</p>
+              <p className="soft small" style={{ margin: "8px 0 0" }}>Paste your secret key (sk_…). It stays in this browser and is sent only to the Cascade API.</p>
             </div>
             <input className="input" type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="sk_live_… or a read-only rk_live_…" aria-label="Secret key" />
-            <button className="btn block" disabled={!/^(sk|rk)_/.test(input.trim())} onClick={() => { const k = input.trim(); try { sessionStorage.setItem(KEY, k); } catch { /* private mode */ } setSignInError(null); setInput(""); setKey(k); }}>Open dashboard</button>
+            <label className="row-start small soft" style={{ gap: 8 }}>
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              Keep me signed in on this device{input.trim() && !isTestKey(input.trim()) ? " (not recommended for live keys on a shared computer)" : ""}
+            </label>
+            <button className="btn block" disabled={!/^(sk|rk)_/.test(input.trim())} onClick={() => { const k = input.trim(); saveKey(k, remember); setSignInError(null); setInput(""); setKey(k); }}>Open dashboard</button>
             {signInError && <div className="tiny error">{signInError}</div>}
             <div className="tiny muted">No key yet? <a href="/start">Create a sandbox account</a> in a few seconds.</div>
           </div>

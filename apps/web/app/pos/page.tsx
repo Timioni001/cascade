@@ -4,17 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Delete, ExternalLink, Loader2, Store } from "lucide-react";
 import type { CheckoutSession } from "@cascade/sdk";
 import { call } from "../dashboard/api";
+import { readKey, saveKey } from "../../lib/session";
 import { PaymentQr } from "../components/PaymentQr";
 import { Brand, DemoBanner } from "../components/ui";
 
-const KEY = "cascade_dashboard_key";
-const readKey = () => {
-  try {
-    return sessionStorage.getItem(KEY) ?? "";
-  } catch {
-    return "";
-  }
-};
 
 /** cents string -> "$12.34" */
 const fmt = (cents: string) => `$${(Number(cents || "0") / 100).toFixed(2)}`;
@@ -25,6 +18,7 @@ const fmt = (cents: string) => `$${(Number(cents || "0") / 100).toFixed(2)}`;
  */
 export default function Pos() {
   const [key, setKey] = useState("");
+  const [ready, setReady] = useState(false);
   const [input, setInput] = useState("");
   const [cents, setCents] = useState("");
   const [note, setNote] = useState("");
@@ -34,7 +28,10 @@ export default function Pos() {
   const [merchant, setMerchant] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => setKey(readKey()), []);
+  useEffect(() => {
+    setKey(readKey());
+    setReady(true);
+  }, []);
   useEffect(() => {
     if (key) call<{ name: string }>(key, "merchant").then((m) => setMerchant(m.name), (e: Error) => setError(e.message));
   }, [key]);
@@ -72,6 +69,8 @@ export default function Pos() {
     setNote("");
   };
 
+  if (!ready) return <div className="page" />;
+
   if (!key) {
     return (
       <div className="page">
@@ -81,7 +80,7 @@ export default function Pos() {
           <div className="card stack-lg">
             <div><h1 className="h1">Point of sale</h1><p className="small soft" style={{ margin: "8px 0 0" }}>Take in-person payments in any coin. Sign in with your secret key, or create a sandbox account first.</p></div>
             <input className="input" type="password" placeholder="sk_…" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Secret key" />
-            <button className="btn block" disabled={!input.startsWith("sk_")} onClick={() => { try { sessionStorage.setItem(KEY, input); } catch { /* private mode */ } setKey(input); }}>Open register</button>
+            <button className="btn block" disabled={!input.startsWith("sk_")} onClick={() => { const k = input.trim(); saveKey(k, true); setKey(k); }}>Open register</button>
             <a className="btn ghost block" href="/start">Create a sandbox account</a>
           </div>
         </main>

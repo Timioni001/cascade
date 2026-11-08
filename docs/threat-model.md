@@ -100,7 +100,7 @@ The optional Cascade fee is a 1Click `appFees` entry paid by the customer on top
 
 ## Merchant dashboard
 
-The dashboard keeps the key in the browser tab's session storage and calls the API on the same origin. A script injected into the dashboard page could read the key while it is open. The page itself loads no third-party scripts. The one exception is on demand: pressing **Connect NEAR wallet** loads NEAR Connect (`@hot-labs/near-connect`, pinned 0.11.4), which runs each wallet's own connector in a **sandboxed iframe** that cannot read the page, its storage or the key; it talks to the page only through `postMessage` requests to sign. A wrong or revoked key sends the dashboard back to sign-in. Use a read-only key for anyone who only needs to look; keys can be revoked from Settings.
+The dashboard keeps the key in the browser and calls the API on the same origin: always for the current tab (session storage), and on the device (local storage) when the merchant stays signed in. Sandbox keys are remembered by default; live keys only if the merchant ticks "Keep me signed in". Sign out, or a key the API rejects, clears both. A script injected into the dashboard page could read the key while it is open. The page itself loads no third-party scripts. The one exception is on demand: pressing **Connect NEAR wallet** loads NEAR Connect (`@hot-labs/near-connect`, pinned 0.11.4), which runs each wallet's own connector in a **sandboxed iframe** that cannot read the page, its storage or the key; it talks to the page only through `postMessage` requests to sign. A wrong or revoked key sends the dashboard back to sign-in. Use a read-only key for anyone who only needs to look; keys can be revoked from Settings.
 
 ## Merchant wallet signing
 

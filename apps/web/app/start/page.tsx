@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, Building2, Check, Copy, FlaskConical, Loader2 } from "lucide-react";
+import { saveKey } from "../../lib/session";
 import { API } from "../../lib/api";
 import { Nav } from "../components/ui";
 
@@ -54,11 +55,9 @@ function SandboxCard() {
   }
 
   const open = (path: string) => {
-    try {
-      sessionStorage.setItem("cascade_dashboard_key", done!.secretKey);
-    } catch {
-      /* private mode: the dashboard will ask for the key */
-    }
+    // Remembered on this device, so the dashboard and point of sale open
+    // straight away now and on later visits (sign out to forget it).
+    saveKey(done!.secretKey, true);
     window.location.href = path;
   };
 
