@@ -49,6 +49,7 @@ Real money on mainnet: see [Proof](#proof). Run everything locally with one comm
 14. [Deploy and host](#deploy-and-host)
 15. [Status and limits](#status-and-limits)
 16. [Documentation](#documentation)
+17. [Built with Claude](#built-with-claude)
 
 ## The problem
 
@@ -471,6 +472,12 @@ Keys live only in `.env` (git-ignored); [`.env.example`](.env.example) lists eve
 - [docs/upstream-reports.md](docs/upstream-reports.md): issues found in Sputnik DAO, near-sdk and 1Click, with reproductions
 - [docs/demo-script.md](docs/demo-script.md): demo video brief
 - [HACKATHON.md](HACKATHON.md): tracks, submission summary, libraries
+
+## Built with Claude
+
+Cascade was built with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, working as the engineering partner on this project. Claude wrote most of the code: the Rust contracts, the TypeScript packages and services, the web app, the tests, the documentation and the launch film. It also ran the research behind the design (1Click, x402, NEAR standards) and every audit pass.
+
+The product direction, the decisions, the reviews and every real-world action were the team lead's: the testnet and mainnet deployments, the mainnet transactions and the hosting. See [HACKATHON.md](HACKATHON.md) for the full disclosure.
 
 ## License
 
