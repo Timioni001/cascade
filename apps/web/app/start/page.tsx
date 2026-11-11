@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, Check, Copy, FlaskConical, Loader2 } from "lucide-react";
 import { saveKey } from "../../lib/session";
 import { API } from "../../lib/api";
@@ -154,6 +154,45 @@ function LiveCard() {
   );
 }
 
+/**
+ * Two options side by side. On a phone they become a swipeable row: each card
+ * snaps into place, the next one peeks in from the edge, and a switch above
+ * shows which one is in view and jumps between them.
+ */
+function Choices() {
+  const row = useRef<HTMLElement>(null);
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const cards = Array.from(el.children) as HTMLElement[];
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) setActive(cards.indexOf(e.target as HTMLElement)); }),
+      { root: el, threshold: 0.6 },
+    );
+    cards.forEach((c) => io.observe(c));
+    return () => io.disconnect();
+  }, []);
+  const go = (i: number) => {
+    const el = row.current;
+    const card = el?.children[i] as HTMLElement | undefined;
+    if (el && card) el.scrollTo({ left: card.offsetLeft - el.offsetLeft, behavior: "smooth" });
+  };
+  return (
+    <div className="stack">
+      <div className="choice-switch" role="tablist" aria-label="Choose how to start">
+        {["Sandbox", "Go live"].map((t, i) => (
+          <button key={t} role="tab" aria-selected={active === i} className={active === i ? "on" : ""} onClick={() => go(i)}>{t}</button>
+        ))}
+      </div>
+      <section ref={row} className="choices">
+        <SandboxCard />
+        <LiveCard />
+      </section>
+    </div>
+  );
+}
+
 export default function Start() {
   return (
     <div className="page">
@@ -164,10 +203,7 @@ export default function Start() {
           <h1 className="h1">Accept any coin in minutes.</h1>
           <p className="soft" style={{ margin: 0 }}>Try everything in the sandbox right now, then apply for live access. Same API, same dashboard, same receipts.</p>
         </div>
-        <section className="grid-2" style={{ gap: 16, alignItems: "start" }}>
-          <SandboxCard />
-          <LiveCard />
-        </section>
+        <Choices />
       </main>
     </div>
   );
