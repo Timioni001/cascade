@@ -255,7 +255,7 @@ export function Checkout({ id, embed, parent }: { id: string; embed: boolean; pa
           ) : (
             <div className="stack-lg">
               <div className="tiny muted">Pay with</div>
-              <div className="grid-2">
+              <div className="grid-2 keep-2">
                 {list.map((a) => {
                   const on = a.assetId === assetId;
                   return (
@@ -332,7 +332,7 @@ export function CheckoutSkeleton() {
           <div className="row-start"><Skeleton w={36} h={36} r={12} /><div style={{ flex: 1 }} className="stack"><Skeleton w="45%" h={16} /><Skeleton w="30%" h={12} /></div></div>
           <Skeleton w="50%" h={40} />
           <Skeleton w="60%" h={14} />
-          <div className="grid-2">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} h={62} r={12} />)}</div>
+          <div className="grid-2 keep-2">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} h={62} r={12} />)}</div>
         </div>
       </main>
     </>
